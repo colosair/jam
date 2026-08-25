@@ -186,6 +186,89 @@ export class Ui {
   }
 
   /**
+   * Free-text answer. Echoes what is typed.
+   */
+  async prompt(question: string, flagHint: string, fallback?: string): Promise<string> {
+    const answer = await this.readInput(question, { masked: false, flagHint, fallback });
+    return answer || (fallback ?? "");
+  }
+
+  /**
+   * Secret answer - nothing typed is ever echoed, to this stream or any other.
+   *
+   * No dots, no length hint, no redraw: an API token pasted into a terminal
+   * should leave no trace on screen for someone glancing over, in a screen
+   * share, or in scrollback.
+   */
+  async secret(question: string, flagHint: string): Promise<string> {
+    return this.readInput(question, { masked: true, flagHint });
+  }
+
+  /**
+   * The one place raw mode, the keypress listener and the character buffer
+   * live. `prompt` and `secret` differ only in whether input is echoed, so
+   * they must not each own a copy of this.
+   */
+  private async readInput(
+    question: string,
+    options: { masked: boolean; flagHint: string; fallback?: string },
+  ): Promise<string> {
+    if (!this.interactive) throw new NonInteractiveError(question, options.flagHint);
+
+    const suffix = options.fallback ? ` ${this.paint(`[${options.fallback}]`, "dim")}` : "";
+    this.write(`${question}${suffix} `);
+
+    emitKeypressEvents(this.input);
+    const wasRaw = this.input.isRaw ?? false;
+    this.input.setRawMode?.(true);
+    this.input.resume();
+
+    let buffer = "";
+    try {
+      return await new Promise<string>((resolve, reject) => {
+        const onKey = (str: string | undefined, key: { name?: string; ctrl?: boolean }) => {
+          if (key.name === "return" || key.name === "enter") {
+            if (!options.masked) this.write("\n");
+            else this.line();
+            cleanup();
+            resolve(buffer);
+            return;
+          }
+          if (key.name === "escape" || (key.ctrl && key.name === "c")) {
+            this.line();
+            cleanup();
+            reject(new CancelledError());
+            return;
+          }
+          if (key.name === "backspace") {
+            if (buffer.length === 0) return;
+            buffer = buffer.slice(0, -1);
+            // Only an echoed prompt has anything on screen to erase.
+            if (!options.masked) this.write(`${CSI}D${CSI}K`);
+            return;
+          }
+          // Ignore control keys; take printable characters, including whole
+          // runs of them, which is how a paste arrives.
+          if (key.ctrl || str === undefined || str === "") return;
+          const printable = str.replace(/[\u0000-\u001f\u007f]/g, "");
+          if (!printable) return;
+          buffer += printable;
+          if (!options.masked) this.write(printable);
+        };
+        const cleanup = () => {
+          this.input.off("keypress", onKey);
+        };
+        this.input.on("keypress", onKey);
+      });
+    } finally {
+      // Unlike select(), the listener is removed here too: a stray listener
+      // would let the next prompt receive the tail of a token.
+      this.input.setRawMode?.(wasRaw);
+      this.input.pause();
+    }
+  }
+
+  /**
    * Single-choice list. Throws in non-interactive mode rather than silently
    * picking a default - an unattended run that quietly chose for you is worse
    * than one that tells you which flag to pass.

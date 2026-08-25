@@ -1,8 +1,10 @@
+import { authLoginCommand, authLogoutCommand } from "./cli/auth.js";
 import { doctor } from "./cli/doctor.js";
 import { showRuntime, useRuntime } from "./cli/runtime.js";
 import { serve } from "./cli/serve.js";
 import { setup } from "./cli/setup.js";
 import { runSetupWizard } from "./cli/setup-wizard.js";
+import { CancelledError, NonInteractiveError, Ui } from "./cli/ui.js";
 import {
   authStatusCommand,
   doctorJsonCommand,
@@ -26,6 +28,8 @@ Usage:
   jam runtime             Show which JAM build this machine runs
   jam runtime use package | development <path>
                           Change it (writes ~/.jam/config.yaml only, never a project)
+  jam auth login          Store Jira credentials in this user's OS secret store
+  jam auth logout         Remove them again
 
 For coding agents and scripts (stdout is JSON only, never prompts):
   jam setup --agent       One shot: detect, plan, apply what is safe, verify
@@ -50,6 +54,31 @@ first, then (on Windows) from the User environment - so a value set with
 function findFlagValue(argv: string[], flag: string): string | undefined {
   const index = argv.indexOf(flag);
   return index >= 0 ? argv[index + 1] : undefined;
+}
+
+/**
+ * Commands that may ask a question share the wizard's mapping: a cancelled
+ * prompt is not a failure, and a missing terminal is guidance rather than a
+ * diagnosis.
+ */
+async function withPrompts(run: () => Promise<number>): Promise<number> {
+  const ui = new Ui();
+  try {
+    return await run();
+  } catch (err) {
+    if (err instanceof CancelledError) {
+      ui.line();
+      ui.warn("Cancelled. Nothing was changed.");
+      return 130;
+    }
+    if (err instanceof NonInteractiveError) {
+      ui.line();
+      ui.failure(err.message);
+      ui.next(`Run:  ${err.flagHint}`);
+      return 1;
+    }
+    throw err;
+  }
 }
 
 export async function runJamCommand(argv: string[]): Promise<number> {
@@ -87,7 +116,12 @@ export async function runJamCommand(argv: string[]): Promise<number> {
 
     case "auth": {
       if (rest[0] === "status") return authStatusCommand();
-      process.stderr.write("Usage: jam auth status [--json]\n");
+      // login/logout are human-only by design: an agent must stop at
+      // JAM_AUTH_REQUIRED and hand the person this command, never run it with a
+      // token it was given.
+      if (rest[0] === "login") return withPrompts(() => authLoginCommand());
+      if (rest[0] === "logout") return withPrompts(async () => authLogoutCommand());
+      process.stderr.write("Usage: jam auth login | status [--json] | logout\n");
       return 1;
     }
 

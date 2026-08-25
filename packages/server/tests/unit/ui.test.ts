@@ -125,3 +125,94 @@ describe("Ui rendering", () => {
     await expect(rejection).rejects.toThrow(/cannot be asked without a terminal/);
   });
 });
+
+/** Feeds keystrokes to a Ui that is already waiting on them. */
+async function type(input: NodeJS.ReadStream, keys: string): Promise<void> {
+  await new Promise((r) => setImmediate(r));
+  (input as unknown as { write: (chunk: string) => void }).write(keys);
+  await new Promise((r) => setImmediate(r));
+}
+
+describe("Ui.secret", () => {
+  it("refuses to ask without a terminal, and names the way out", async () => {
+    const ui = new Ui({
+      stream: captureStream(false),
+      input: fakeInput(false),
+      color: false,
+      interactive: false,
+    });
+
+    await expect(ui.secret("Jira API token", "export JIRA_API_TOKEN")).rejects.toMatchObject({
+      name: "NonInteractiveError",
+      flagHint: "export JIRA_API_TOKEN",
+    });
+  });
+
+  it("never echoes what was typed", async () => {
+    const stream = captureStream(true);
+    const input = fakeInput(true);
+    const ui = new Ui({ stream, input, color: false, interactive: true });
+
+    const answer = ui.secret("Jira API token", "hint");
+    await type(input, "SUPER_SECRET_TOKEN\r");
+
+    expect(await answer).toBe("SUPER_SECRET_TOKEN");
+    // The point of the whole method: nothing on screen, in a screen share, or
+    // in scrollback.
+    expect(stream.text()).not.toContain("SUPER_SECRET_TOKEN");
+    expect(stream.text()).not.toContain("SUPER");
+  });
+
+  it("applies backspace without echoing", async () => {
+    const stream = captureStream(true);
+    const input = fakeInput(true);
+    const ui = new Ui({ stream, input, color: false, interactive: true });
+
+    const answer = ui.secret("Jira API token", "hint");
+    await type(input, "abcX\u007f\r");
+
+    expect(await answer).toBe("abc");
+    expect(stream.text()).not.toContain("abc");
+  });
+
+  it("cancels on escape and leaves the terminal as it found it", async () => {
+    const input = fakeInput(true);
+    const raw: boolean[] = [];
+    (input as unknown as { setRawMode: (v: boolean) => void }).setRawMode = (v) => {
+      raw.push(v);
+    };
+    const ui = new Ui({ stream: captureStream(true), input, color: false, interactive: true });
+
+    const answer = ui.secret("Jira API token", "hint");
+    await type(input, "\u001b");
+
+    await expect(answer).rejects.toMatchObject({ name: "CancelledError" });
+    expect(raw).toEqual([true, false]);
+    // A listener left behind would feed the tail of a token to the next prompt.
+    expect(input.listenerCount("keypress")).toBe(0);
+  });
+});
+
+describe("Ui.prompt", () => {
+  it("echoes what was typed and returns it", async () => {
+    const stream = captureStream(true);
+    const input = fakeInput(true);
+    const ui = new Ui({ stream, input, color: false, interactive: true });
+
+    const answer = ui.prompt("Jira email", "hint");
+    await type(input, "user@example.com\r");
+
+    expect(await answer).toBe("user@example.com");
+    expect(stream.text()).toContain("user@example.com");
+  });
+
+  it("falls back to the offered value when the answer is empty", async () => {
+    const input = fakeInput(true);
+    const ui = new Ui({ stream: captureStream(true), input, color: false, interactive: true });
+
+    const answer = ui.prompt("Jira email", "hint", "already@known.com");
+    await type(input, "\r");
+
+    expect(await answer).toBe("already@known.com");
+  });
+});
