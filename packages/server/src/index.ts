@@ -10,7 +10,7 @@ const USAGE = `jam - Jira Agent MCP
 Usage:
   jam serve               Run the MCP server over stdio (default; this is what Claude Code / Codex launch)
   jam doctor              Diagnose config, credentials and Jira connectivity
-  jam setup [--project KEY]
+  jam setup [--project KEY] [--migrate]
                           Wire up this project (project.yaml, .mcp.json) and run doctor
   jam runtime             Show which JAM build this machine runs
   jam runtime use package | development <path>
@@ -45,7 +45,10 @@ async function main(): Promise<number> {
 
     case "setup": {
       const explicitKey = findFlagValue(rest, "--project");
-      return setup(explicitKey ? { explicitKey } : {});
+      return setup({
+        ...(explicitKey ? { explicitKey } : {}),
+        ...(rest.includes("--migrate") ? { migrate: true } : {}),
+      });
     }
 
     case "runtime": {
