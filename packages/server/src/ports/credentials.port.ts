@@ -9,7 +9,7 @@ export type JiraCredentials = {
 };
 
 /** Where the resolved credentials came from - "mixed" when fields disagree. */
-export type CredentialSource = "process" | "user-env" | "mixed" | "none";
+export type CredentialSource = "process" | "secret-store" | "user-env" | "mixed" | "none";
 
 export type CredentialDescription = {
   baseUrl?: string;

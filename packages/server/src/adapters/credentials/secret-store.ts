@@ -1,0 +1,286 @@
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, userInfo } from "node:os";
+import { join } from "node:path";
+import {
+  CREDENTIAL_ENV_KEYS,
+  type CredentialValueSource,
+  type RawCredentialValues,
+} from "./process-env.js";
+
+/**
+ * Credentials held by the operating system for this user, rather than by a
+ * shell profile.
+ *
+ * This is what makes JAM work in an editor launched from a Dock or Start menu.
+ * Such an editor never sourced a shell profile, so the MCP child it spawns
+ * inherits no `JIRA_*` at all - but it does run as the user, so it can read
+ * what the OS is holding for that user.
+ *
+ * The stored value never appears in a log, an error, or a tool result. It is
+ * read into memory, handed to the credential chain, and nothing else.
+ */
+export type StoredCredentials = {
+  baseUrl: string;
+  email: string;
+  apiToken: string;
+};
+
+export type RunResult = {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+  error?: NodeJS.ErrnoException;
+};
+
+/** Injected by tests so the suite never touches a real keychain. */
+export type RunFn = (command: string, args: string[], input?: string) => RunResult;
+
+export interface SecretStore {
+  /** Shown by `jam auth login`. Names the mechanism, never a value. */
+  readonly label: string;
+  /** Missing or unreadable resolves to undefined - reading never throws. */
+  read(): StoredCredentials | undefined;
+  /** Throws on failure: the user just asked for this and must not be told it worked. */
+  write(values: StoredCredentials): void;
+  /** Succeeds when there was nothing to remove. */
+  clear(): void;
+}
+
+/** Raised when the platform's backend is absent, as opposed to empty. */
+export class SecretStoreUnavailableError extends Error {
+  readonly remedy: string;
+
+  constructor(message: string, remedy: string) {
+    super(message);
+    this.name = "SecretStoreUnavailableError";
+    this.remedy = remedy;
+  }
+}
+
+/** Derived from constants, never from user input, except the account name. */
+const SERVICE = "jam-mcp";
+
+function account(): string {
+  return userInfo().username;
+}
+
+function defaultRun(command: string, args: string[], input?: string): RunResult {
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    ...(input === undefined ? {} : { input }),
+    // No shell: arguments are passed as an array, so nothing is re-parsed.
+    windowsHide: true,
+  });
+  return {
+    status: result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    ...(result.error ? { error: result.error } : {}),
+  };
+}
+
+/** Whether a command exists and runs at all. ENOENT is the signal we want. */
+function canRun(run: RunFn, command: string, args: string[]): boolean {
+  return run(command, args).error?.code !== "ENOENT";
+}
+
+function parse(raw: string): StoredCredentials | undefined {
+  try {
+    const parsed = JSON.parse(raw) as Partial<StoredCredentials>;
+    if (!parsed?.baseUrl || !parsed.email || !parsed.apiToken) return undefined;
+    return { baseUrl: parsed.baseUrl, email: parsed.email, apiToken: parsed.apiToken };
+  } catch {
+    // A corrupt entry is treated as absent. Reading is one step of credential
+    // resolution and must not turn into a crash on an unrelated command.
+    return undefined;
+  }
+}
+
+/**
+ * macOS login Keychain.
+ *
+ * The item is created and read by the same binary (`/usr/bin/security`), which
+ * is what keeps the OS from prompting for approval on every read.
+ */
+function macosStore(run: RunFn): SecretStore {
+  const base = ["-s", SERVICE, "-a", account()];
+  return {
+    label: "macOS Keychain",
+    read() {
+      const res = run("security", ["find-generic-password", ...base, "-w"]);
+      if (res.error || res.status !== 0) return undefined;
+      return parse(res.stdout.trim());
+    },
+    write(values) {
+      // `-U` updates in place rather than failing on an existing item.
+      // The secret rides in argv here because `security` reads its -w prompt
+      // from the controlling terminal, not stdin, and we already collected the
+      // token through our own masked prompt - prompting again would be worse.
+      // Visible only to this user, for the lifetime of one short-lived child.
+      const res = run("security", [
+        "add-generic-password",
+        ...base,
+        "-U",
+        "-w",
+        JSON.stringify(values),
+      ]);
+      if (res.error?.code === "ENOENT") throw unavailable("security");
+      if (res.status !== 0) throw new Error(`Keychain write failed: ${res.stderr.trim()}`);
+    },
+    clear() {
+      run("security", ["delete-generic-password", ...base]);
+    },
+  };
+}
+
+/** Linux libsecret, via the `secret-tool` CLI. */
+function linuxStore(run: RunFn): SecretStore {
+  const attrs = ["service", SERVICE, "account", account()];
+  return {
+    label: "libsecret (secret-tool)",
+    read() {
+      const res = run("secret-tool", ["lookup", ...attrs]);
+      if (res.error || res.status !== 0) return undefined;
+      return parse(res.stdout.trim());
+    },
+    write(values) {
+      // secret-tool reads the secret from stdin, so it never reaches argv.
+      const res = run(
+        "secret-tool",
+        ["store", "--label", "JAM (Jira Agent MCP)", ...attrs],
+        JSON.stringify(values),
+      );
+      if (res.error?.code === "ENOENT") throw unavailable("secret-tool");
+      if (res.status !== 0) throw new Error(`secret-tool store failed: ${res.stderr.trim()}`);
+    },
+    clear() {
+      run("secret-tool", ["clear", ...attrs]);
+    },
+  };
+}
+
+/**
+ * Windows: a file encrypted to the current user account with DPAPI.
+ *
+ * Credential Manager is not usable here - `cmdkey` can store a credential but
+ * cannot read one back, and reading it needs either a P/Invoke or a PowerShell
+ * module that is not installed by default.
+ *
+ * The confidentiality boundary is DPAPI's current-user binding. The 0o600 mode
+ * on the file is best-effort hardening on top, not the thing protecting it -
+ * Node's mode argument does not carry POSIX semantics on Windows.
+ *
+ * Kept separate from ~/.jam/config.yaml, which declares itself hand-editable
+ * and free of credentials.
+ */
+function windowsStore(run: RunFn): SecretStore {
+  const dir = join(homedir(), ".jam");
+  const path = join(dir, "credentials.dpapi");
+  // The path reaches PowerShell as an argument, never interpolated into the
+  // script text; the secret reaches it on stdin.
+  const decrypt = [
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    "$p=$args[0]; if(!(Test-Path $p)){exit 1};" +
+      "$s=Get-Content $p -Raw | ConvertTo-SecureString;" +
+      "[Runtime.InteropServices.Marshal]::PtrToStringAuto(" +
+      "[Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))",
+    "-args",
+  ];
+  const encrypt = [
+    "-NoProfile",
+    "-NonInteractive",
+    "-Command",
+    "$in=[Console]::In.ReadToEnd();" +
+      "$in | ConvertTo-SecureString -AsPlainText -Force |" +
+      " ConvertFrom-SecureString | Set-Content $args[0] -NoNewline",
+    "-args",
+  ];
+
+  return {
+    label: "Windows DPAPI (user-encrypted file)",
+    read() {
+      if (!existsSync(path)) return undefined;
+      const res = run("powershell", [...decrypt, path]);
+      if (res.error || res.status !== 0) return undefined;
+      return parse(res.stdout.trim());
+    },
+    write(values) {
+      mkdirSync(dir, { recursive: true });
+      const res = run("powershell", [...encrypt, path], JSON.stringify(values));
+      if (res.error?.code === "ENOENT") throw unavailable("powershell");
+      if (res.status !== 0) throw new Error(`DPAPI write failed: ${res.stderr.trim()}`);
+      try {
+        // Best-effort only; DPAPI is what actually protects the contents.
+        writeFileSync(path, "", { flag: "r+", mode: 0o600 });
+      } catch {
+        /* ignore - the encryption, not the mode, is the boundary */
+      }
+    },
+    clear() {
+      rmSync(path, { force: true });
+    },
+  };
+}
+
+function unavailable(command: string): SecretStoreUnavailableError {
+  return new SecretStoreUnavailableError(
+    `No usable secret store was found on this system (${command} is not available).`,
+    command === "secret-tool"
+      ? "Install secret-tool (libsecret), or set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN instead."
+      : "Set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN instead.",
+  );
+}
+
+/**
+ * The store for this system, or undefined when there is none that works.
+ *
+ * Being on Linux is not the same as having a secret store: a headless server or
+ * a container routinely has no libsecret and no session keyring. So the backend
+ * is probed, not assumed from `process.platform`.
+ */
+export function resolveSecretStore(run: RunFn = defaultRun): SecretStore | undefined {
+  if (process.platform === "darwin") {
+    return canRun(run, "security", ["help"]) ? macosStore(run) : undefined;
+  }
+  if (process.platform === "win32") {
+    return canRun(run, "powershell", ["-NoProfile", "-Command", "$null"])
+      ? windowsStore(run)
+      : undefined;
+  }
+  if (process.platform === "linux") {
+    return canRun(run, "secret-tool", ["--version"]) ? linuxStore(run) : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * The credential chain's view of the store.
+ *
+ * Fail-soft by design, like the Windows registry source: a machine with no
+ * store, or an empty one, is a normal state that must not turn every command
+ * into an error. `jam auth login` is where a failure gets reported, because
+ * there the user asked for something specific.
+ */
+export class SecretStoreCredentialSource implements CredentialValueSource {
+  constructor(private readonly store: SecretStore | undefined = resolveSecretStore()) {}
+
+  read(): RawCredentialValues {
+    const stored = this.store?.read();
+    if (!stored) return {};
+
+    const values: RawCredentialValues = {};
+    const byKey = {
+      JIRA_BASE_URL: stored.baseUrl,
+      JIRA_EMAIL: stored.email,
+      JIRA_API_TOKEN: stored.apiToken,
+    };
+    for (const key of CREDENTIAL_ENV_KEYS) {
+      const value = byKey[key]?.trim();
+      if (value) values[key] = value;
+    }
+    return values;
+  }
+}

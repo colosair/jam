@@ -66,6 +66,70 @@ describe("CompositeCredentialProvider", () => {
     expect(provider.describe().source).toBe("none");
   });
 
+  it("resolves from the secret store when nothing is exported", () => {
+    // The case D9 exists for: an editor launched from a Dock or Start menu
+    // sourced no shell profile, so process.env carries nothing at all.
+    const provider = new CompositeCredentialProvider([
+      { name: "process", source: new StubSource({}) },
+      {
+        name: "secret-store",
+        source: new StubSource({
+          JIRA_BASE_URL: "https://example.atlassian.net",
+          JIRA_EMAIL: "user@example.com",
+          JIRA_API_TOKEN: SECRET,
+        }),
+      },
+      { name: "user-env", source: new StubSource({}) },
+    ]);
+
+    expect(provider.load().apiToken).toBe(SECRET);
+    expect(provider.describe().source).toBe("secret-store");
+  });
+
+  it("lets an exported value override the secret store", () => {
+    const provider = new CompositeCredentialProvider([
+      { name: "process", source: new StubSource({ JIRA_EMAIL: "override@example.com" }) },
+      { name: "secret-store", source: new StubSource({ JIRA_EMAIL: "stored@example.com" }) },
+    ]);
+
+    expect(provider.describe().email).toBe("override@example.com");
+  });
+
+  it("reports 'mixed' when an exported value shadows only part of the stored credential", () => {
+    // Merging is per field, so one stale export is enough to split the origin.
+    // `jam auth login` keys its override warning off exactly this.
+    const provider = new CompositeCredentialProvider([
+      { name: "process", source: new StubSource({ JIRA_BASE_URL: "https://other.atlassian.net" }) },
+      {
+        name: "secret-store",
+        source: new StubSource({
+          JIRA_BASE_URL: "https://example.atlassian.net",
+          JIRA_EMAIL: "user@example.com",
+          JIRA_API_TOKEN: SECRET,
+        }),
+      },
+    ]);
+
+    expect(provider.describe().source).toBe("mixed");
+    expect(provider.describe().baseUrl).toBe("https://other.atlassian.net");
+  });
+
+  it("never lets a stored token leak through describe() or JSON serialization", () => {
+    const provider = new CompositeCredentialProvider([
+      {
+        name: "secret-store",
+        source: new StubSource({
+          JIRA_BASE_URL: "https://example.atlassian.net",
+          JIRA_EMAIL: "user@example.com",
+          JIRA_API_TOKEN: SECRET,
+        }),
+      },
+    ]);
+
+    provider.load();
+    expect(JSON.stringify(provider.describe())).not.toContain(SECRET);
+  });
+
   it("never lets the token leak through describe(), thrown errors, or JSON serialization", () => {
     const provider = new CompositeCredentialProvider([
       {
