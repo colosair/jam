@@ -28,7 +28,7 @@ Two rules make this work:
 
 ```json
 {
-  "issues": [{ "key": "PROJECT-101", "summary": "Example", "status": "Open" }],
+  "issues": [{ "key": "PROJECT-237", "summary": "Example", "status": "해야 할 일" }],
   "meta": { "level": "search", "complete": true, "pagesFetched": 1, "fetchedAt": "..." }
 }
 ```
@@ -42,7 +42,7 @@ npm ci && npm run build
 Set credentials (never commit them — `.env` is gitignored):
 
 ```bash
-export JIRA_BASE_URL=https://your-site.atlassian.net
+export JIRA_BASE_URL=https://example.atlassian.net
 export JIRA_EMAIL=you@example.com
 export JIRA_API_TOKEN=...   # https://id.atlassian.com/manage-profile/security/api-tokens
 ```
@@ -67,12 +67,12 @@ problem, or a local setup problem?
 [OK]   Node runtime - v20.11.0
 [OK]   Project config - .jira-agent/project.yaml (project=PROJECT)
 [OK]   Jira project key - PROJECT
-[OK]   Credentials present - you@example.com @ https://your-site.atlassian.net
-[OK]   Jira base URL - https://your-site.atlassian.net
+[OK]   Credentials present - you@example.com @ https://example.atlassian.net
+[OK]   Jira base URL - https://example.atlassian.net
 [OK]   MCP server startup - 3 tools registered
 [OK]   Jira authentication - Your Name
-[OK]   JQL search / PROJECT access - reachable (sample PROJECT-101)
-[OK]   Issue detail endpoint - read PROJECT-101
+[OK]   JQL search / PROJECT access - reachable (sample PROJECT-237)
+[OK]   Issue detail endpoint - read PROJECT-237
 ```
 
 ## Commands
@@ -112,7 +112,7 @@ version; the minimum is:
 ```yaml
 version: 1
 project:
-  key: PROJECT
+  key: PROJECT   # target-project - the Jira key is the cohort code
 ```
 
 `CLAUDE.md` / `AGENTS.md` — keep it short; the tool descriptions carry the detail:

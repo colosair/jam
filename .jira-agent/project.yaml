@@ -2,6 +2,7 @@
 version: 1
 
 project:
+  # target-project. The Jira key is the ORG cohort code, not "target-project".
   key: PROJECT
 
 search:
