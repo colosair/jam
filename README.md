@@ -97,7 +97,7 @@ Jira checks on every startup (see Health checks below).
 ## Verify
 
 ```bash
-node dist/index.js doctor
+node packages/server/dist/index.js doctor
 ```
 
 `jam doctor` answers one question fast — is this a Jira problem, a credential

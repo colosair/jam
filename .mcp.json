@@ -2,7 +2,10 @@
   "mcpServers": {
     "jam": {
       "command": "node",
-      "args": ["dist/index.js", "serve"],
+      "args": [
+        "packages/server/dist/index.js",
+        "serve"
+      ],
       "env": {
         "JIRA_BASE_URL": "${JIRA_BASE_URL}",
         "JIRA_EMAIL": "${JIRA_EMAIL}",

@@ -47,12 +47,12 @@ $missing = @('JIRA_BASE_URL', 'JIRA_EMAIL', 'JIRA_API_TOKEN') |
     Where-Object { -not [Environment]::GetEnvironmentVariable($_) }
 if ($missing) {
     Write-Host "[FAIL] Missing environment variables: $($missing -join ', ')" -ForegroundColor Red
-    Write-Host '       Set them, then re-run this script (or run: node dist/index.js doctor)'
+    Write-Host '       Set them, then re-run this script (or run: node packages/server/dist/index.js doctor)'
     exit 1
 }
 Write-Host '[OK]   Credentials present'
 
 Write-Host ''
 Write-Host '== jam doctor ==' -ForegroundColor Cyan
-node dist/index.js doctor
+node packages/server/dist/index.js doctor
 exit $LASTEXITCODE

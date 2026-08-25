@@ -1,0 +1,35 @@
+{
+  "name": "@jam-mcp/server",
+  "version": "1.0.0",
+  "description": "JAM (Jira Agent MCP) - agent-facing Jira access layer: MCP server, setup core, and CLI",
+  "type": "module",
+  "bin": {
+    "jam": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.11"
+  },
+  "license": "UNLICENSED"
+}
