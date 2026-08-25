@@ -5,6 +5,7 @@ import { computeSetupPlan, type SetupPlan } from "../bootstrap/setup-plan.js";
 import { detectSetupState, type SetupState } from "../bootstrap/setup-state.js";
 import { buildDeps } from "../deps.js";
 import { toJamError } from "../domain/errors.js";
+import type { CredentialPort } from "../ports/credentials.port.js";
 
 /**
  * The machine-readable half of setup.
@@ -24,6 +25,10 @@ export type AgentOptions = {
   home?: string;
   explicitKey?: string;
   migrate?: boolean;
+  /** Injected by tests so a plan never depends on the machine's JIRA_* env. */
+  credentials?: CredentialPort;
+  /** Injected by tests so a plan never depends on the machine's JAM_PROJECT_KEY. */
+  env?: NodeJS.ProcessEnv;
 };
 
 export function emitJson(payload: unknown): void {
@@ -34,6 +39,7 @@ function detect(options: AgentOptions): SetupState {
   return detectSetupState({
     ...(options.cwd ? { cwd: options.cwd } : {}),
     ...(options.home ? { home: options.home } : {}),
+    ...(options.credentials ? { credentials: options.credentials } : {}),
   });
 }
 
@@ -41,13 +47,14 @@ function planFrom(state: SetupState, options: AgentOptions): SetupPlan {
   return computeSetupPlan(state, {
     ...(options.explicitKey ? { explicitKey: options.explicitKey } : {}),
     ...(options.migrate ? { migrate: options.migrate } : {}),
+    ...(options.env ? { env: options.env } : {}),
   });
 }
 
 /** Enrich a selection-required plan with the projects the account can see. */
-async function withProjects(plan: SetupPlan): Promise<SetupPlan> {
+async function withProjects(plan: SetupPlan, options: AgentOptions): Promise<SetupPlan> {
   if (plan.code !== "JAM_PROJECT_SELECTION_REQUIRED") return plan;
-  const { projects } = await listVisibleProjects();
+  const { projects } = await listVisibleProjects(options.credentials);
   return projects.length > 0 ? { ...plan, projects } : plan;
 }
 
@@ -55,7 +62,7 @@ async function withProjects(plan: SetupPlan): Promise<SetupPlan> {
  * `jam setup plan --json` - what setup would do, having done nothing.
  */
 export async function setupPlanCommand(options: AgentOptions = {}): Promise<number> {
-  const plan = await withProjects(planFrom(detect(options), options));
+  const plan = await withProjects(planFrom(detect(options), options), options);
   emitJson({ ...plan, changesApplied: false });
   return plan.requiresUserAction ? 1 : 0;
 }
@@ -72,7 +79,7 @@ export async function setupApplyCommand(options: AgentOptions = {}): Promise<num
   const plan = planFrom(state, options);
 
   if (plan.code === "JAM_PROJECT_SELECTION_REQUIRED") {
-    emitJson({ ...(await withProjects(plan)), changesApplied: false });
+    emitJson({ ...(await withProjects(plan, options)), changesApplied: false });
     return 1;
   }
   if (plan.code === "JAM_PROJECT_CONFIG_INVALID" || plan.code === "JAM_MCP_CONFIG_UNREADABLE") {
@@ -100,7 +107,7 @@ export async function setupAgentCommand(options: AgentOptions = {}): Promise<num
   const plan = planFrom(state, options);
 
   if (plan.code === "JAM_PROJECT_SELECTION_REQUIRED") {
-    emitJson({ ...(await withProjects(plan)), changesApplied: false });
+    emitJson({ ...(await withProjects(plan, options)), changesApplied: false });
     return 1;
   }
   if (plan.code === "JAM_PROJECT_CONFIG_INVALID" || plan.code === "JAM_MCP_CONFIG_UNREADABLE") {

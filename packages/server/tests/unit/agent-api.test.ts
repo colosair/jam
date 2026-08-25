@@ -7,6 +7,28 @@ import {
   setupApplyCommand,
   setupPlanCommand,
 } from "../../src/cli/agent-api.js";
+import type { CredentialPort } from "../../src/ports/credentials.port.js";
+import { FakeCredentials } from "../helpers.js";
+
+/**
+ * Credentials are always injected here, never inherited.
+ *
+ * These commands otherwise fall through to CompositeCredentialProvider, which
+ * reads the machine's JIRA_* env - so the suite would pass on a developer
+ * laptop that happens to be authenticated and fail on a fresh one. The
+ * no-credential cases additionally keep listVisibleProjects from reaching the
+ * network.
+ */
+const noCredentials: CredentialPort = {
+  load: () => {
+    throw new Error("no credentials");
+  },
+  describe: () => ({ hasToken: false, source: "none" }),
+};
+
+/** Every environment input a plan can read, pinned - JIRA_* and JAM_PROJECT_KEY alike. */
+const authenticated = () => ({ credentials: new FakeCredentials(), env: {} });
+const unauthenticated = () => ({ credentials: noCredentials, env: {} });
 
 function tmp(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -57,7 +79,12 @@ afterEach(() => {
 describe("agent API output contract", () => {
   it("writes parseable JSON and nothing else to stdout", async () => {
     const { out } = await capture(() =>
-      setupPlanCommand({ cwd: project(), home: homeWithRuntime(), explicitKey: "PROJECT" }),
+      setupPlanCommand({
+        cwd: project(),
+        home: homeWithRuntime(),
+        explicitKey: "PROJECT",
+        ...authenticated(),
+      }),
     );
 
     // Not "extract the JSON part" - the whole of stdout must parse.
@@ -66,7 +93,12 @@ describe("agent API output contract", () => {
 
   it("emits no ANSI escapes, so output survives being piped or logged", async () => {
     const { out } = await capture(() =>
-      setupPlanCommand({ cwd: project(), home: homeWithRuntime(), explicitKey: "PROJECT" }),
+      setupPlanCommand({
+        cwd: project(),
+        home: homeWithRuntime(),
+        explicitKey: "PROJECT",
+        ...authenticated(),
+      }),
     );
 
     expect(out).not.toMatch(ANSI_PATTERN);
@@ -74,7 +106,12 @@ describe("agent API output contract", () => {
 
   it("returns a stable shape for a fresh project", async () => {
     const { out, code } = await capture(() =>
-      setupPlanCommand({ cwd: project(), home: homeWithRuntime(), explicitKey: "PROJECT" }),
+      setupPlanCommand({
+        cwd: project(),
+        home: homeWithRuntime(),
+        explicitKey: "PROJECT",
+        ...authenticated(),
+      }),
     );
     const payload = JSON.parse(out);
 
@@ -93,7 +130,7 @@ describe("agent API output contract", () => {
   it("reports selection required with a machine-readable code, not prose", async () => {
     const root = project();
     const { out, code } = await capture(() =>
-      setupPlanCommand({ cwd: root, home: homeWithRuntime() }),
+      setupPlanCommand({ cwd: root, home: homeWithRuntime(), ...unauthenticated() }),
     );
     const payload = JSON.parse(out);
 
@@ -110,16 +147,26 @@ describe("plan / apply parity", () => {
     const home = homeWithRuntime();
 
     const planned = JSON.parse(
-      (await capture(() => setupPlanCommand({ cwd: root, home, explicitKey: "PROJECT" }))).out,
+      (
+        await capture(() =>
+          setupPlanCommand({ cwd: root, home, explicitKey: "PROJECT", ...authenticated() }),
+        )
+      ).out,
     );
     const applied = JSON.parse(
-      (await capture(() => setupApplyCommand({ cwd: root, home, explicitKey: "PROJECT" }))).out,
+      (
+        await capture(() =>
+          setupApplyCommand({ cwd: root, home, explicitKey: "PROJECT", ...authenticated() }),
+        )
+      ).out,
     );
 
     expect(applied.changesApplied).toBe(true);
     expect(applied.changes).toEqual(planned.changes);
 
-    const second = JSON.parse((await capture(() => setupPlanCommand({ cwd: root, home }))).out);
+    const second = JSON.parse(
+      (await capture(() => setupPlanCommand({ cwd: root, home, ...authenticated() }))).out,
+    );
     expect(second.changes).toEqual([]);
     expect(second.status).toBe("already_configured");
   });
@@ -128,7 +175,14 @@ describe("plan / apply parity", () => {
     const root = project();
     const before = readdirSync(root).sort();
 
-    await capture(() => setupPlanCommand({ cwd: root, home: homeWithRuntime(), explicitKey: "PROJECT" }));
+    await capture(() =>
+      setupPlanCommand({
+        cwd: root,
+        home: homeWithRuntime(),
+        explicitKey: "PROJECT",
+        ...authenticated(),
+      }),
+    );
 
     expect(readdirSync(root).sort()).toEqual(before);
   });
@@ -136,7 +190,7 @@ describe("plan / apply parity", () => {
   it("refuses to apply when no project key can be decided safely", async () => {
     const root = project();
     const { out, code } = await capture(() =>
-      setupApplyCommand({ cwd: root, home: homeWithRuntime() }),
+      setupApplyCommand({ cwd: root, home: homeWithRuntime(), ...unauthenticated() }),
     );
 
     expect(JSON.parse(out).code).toBe("JAM_PROJECT_SELECTION_REQUIRED");
@@ -149,7 +203,7 @@ describe("plan / apply parity", () => {
 describe("auth status", () => {
   it("reports presence and origin without ever returning the credential", async () => {
     const { out } = await capture(() =>
-      authStatusCommand({ cwd: project(), home: homeWithRuntime() }),
+      authStatusCommand({ cwd: project(), home: homeWithRuntime(), ...authenticated() }),
     );
     const payload = JSON.parse(out);
 

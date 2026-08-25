@@ -127,7 +127,9 @@ describe("resolveProjectConfig", () => {
     const root = tmp("jam-undecided-");
     mkdirSync(join(root, ".git"), { recursive: true });
 
-    expect(() => resolveProjectConfig({ cwd: root, bootstrap: true })).toThrowError(
+    // env is pinned: an ambient JAM_PROJECT_KEY would otherwise supply a key
+    // and this test would stop testing the "no safe source" path.
+    expect(() => resolveProjectConfig({ cwd: root, bootstrap: true, env: {} })).toThrowError(
       expect.objectContaining({ code: "JAM_SETUP_REQUIRED" }),
     );
     expect(existsSync(join(root, ".jira-agent", "project.yaml"))).toBe(false);

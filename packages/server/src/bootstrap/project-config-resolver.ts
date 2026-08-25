@@ -23,6 +23,8 @@ export type ResolveConfigOptions = {
   bootstrap?: boolean;
   /** `--project` override, only consulted when `bootstrap` is true. */
   explicitKey?: string;
+  /** Injected by tests so a decision never depends on the machine's JAM_PROJECT_KEY. */
+  env?: NodeJS.ProcessEnv;
 };
 
 /**
@@ -46,7 +48,10 @@ export function resolveProjectConfig(options: ResolveConfigOptions = {}): Resolv
     return { config: loaded.config, configPath: loaded.path, root, bootstrapped: false };
   }
 
-  const decision = decideProjectKey(root, { explicitKey: options.explicitKey });
+  const decision = decideProjectKey(root, {
+    ...(options.explicitKey ? { explicitKey: options.explicitKey } : {}),
+    ...(options.env ? { env: options.env } : {}),
+  });
   if (!decision) {
     throw new JamError(
       "JAM_SETUP_REQUIRED",
