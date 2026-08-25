@@ -38,7 +38,7 @@ function store(reply: (call: Call) => Partial<RunResult>): {
   calls: Call[];
 } {
   const { calls, run } = recorder(reply);
-  const resolved = resolveSecretStore(run);
+  const resolved = resolveSecretStore(run, {});
   if (!resolved) throw new Error(`no secret store backend for ${process.platform}`);
   return { store: resolved, calls };
 }
@@ -51,11 +51,20 @@ const enoent = (): Partial<RunResult> => ({
 /** True on the three platforms that have a backend at all. */
 const supported = ["darwin", "win32", "linux"].includes(process.platform);
 
+describe("resolveSecretStore opt-out", () => {
+  it("resolves nothing, and probes nothing, when disabled for a sandbox", () => {
+    const { calls, run } = recorder(() => ({ status: 0 }));
+
+    expect(resolveSecretStore(run, { JAM_DISABLE_SECRET_STORE: "1" })).toBeUndefined();
+    expect(calls).toEqual([]);
+  });
+});
+
 describe.skipIf(!supported)("resolveSecretStore", () => {
   it("returns a store when the platform's backend runs", () => {
     const { run } = recorder(() => ({ status: 0 }));
 
-    expect(resolveSecretStore(run)?.label).toBeTruthy();
+    expect(resolveSecretStore(run, {})?.label).toBeTruthy();
   });
 
   it("returns nothing when the backend is not installed", () => {
@@ -63,7 +72,7 @@ describe.skipIf(!supported)("resolveSecretStore", () => {
     // headless box routinely has neither it nor a session keyring.
     const { run } = recorder(enoent);
 
-    expect(resolveSecretStore(run)).toBeUndefined();
+    expect(resolveSecretStore(run, {})).toBeUndefined();
   });
 });
 
@@ -71,7 +80,7 @@ describe.skipIf(supported)("resolveSecretStore on an unsupported platform", () =
   it("returns nothing without probing for a backend", () => {
     const { calls, run } = recorder(() => ({ status: 0 }));
 
-    expect(resolveSecretStore(run)).toBeUndefined();
+    expect(resolveSecretStore(run, {})).toBeUndefined();
     expect(calls).toEqual([]);
   });
 });
@@ -157,8 +166,23 @@ describe.skipIf(!supported)("SecretStore", () => {
 });
 
 describe("SecretStoreCredentialSource", () => {
-  it("reads nothing when this system has no store", () => {
+  it("never resolves a real store when constructed without one", () => {
+    // The regression this exists for: the constructor used to default to
+    // resolveSecretStore(), and a parameter default fires on an explicit
+    // `undefined` too - so a test meaning "no store here" read the
+    // developer's real keychain and printed their token on failure.
+    // Passing is not enough; the proof is that nothing was executed.
+    let runs = 0;
+    const counted: RunFn = (command, args) => {
+      runs += 1;
+      return { status: 0, stdout: "", stderr: "", command, args } as unknown as RunResult;
+    };
+
     expect(new SecretStoreCredentialSource(undefined).read()).toEqual({});
+    expect(runs).toBe(0);
+    // And nothing in this file can reach a backend without being handed one.
+    expect(resolveSecretStore(counted, { JAM_DISABLE_SECRET_STORE: "1" })).toBeUndefined();
+    expect(runs).toBe(0);
   });
 
   it("reads nothing when the store is empty", () => {

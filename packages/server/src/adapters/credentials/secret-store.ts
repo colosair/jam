@@ -61,6 +61,21 @@ export class SecretStoreUnavailableError extends Error {
 /** Derived from constants, never from user input, except the account name. */
 const SERVICE = "jam-mcp";
 
+/**
+ * Escape hatch for isolated test sandboxes.
+ *
+ * An OS secret store is per-user, not per-HOME, so a sandbox that repoints HOME
+ * still reads the developer's real keychain - the same hole the Windows
+ * registry source has always had. This is not a user-facing feature: it exists
+ * so `npm run smoke` can be offline and deterministic, and `jam auth login`
+ * reports it distinctly rather than claiming no store exists.
+ */
+const DISABLE_ENV = "JAM_DISABLE_SECRET_STORE";
+
+export function secretStoreDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return Boolean(env[DISABLE_ENV]);
+}
+
 function account(): string {
   return userInfo().username;
 }
@@ -241,7 +256,11 @@ function unavailable(command: string): SecretStoreUnavailableError {
  * a container routinely has no libsecret and no session keyring. So the backend
  * is probed, not assumed from `process.platform`.
  */
-export function resolveSecretStore(run: RunFn = defaultRun): SecretStore | undefined {
+export function resolveSecretStore(
+  run: RunFn = defaultRun,
+  env: NodeJS.ProcessEnv = process.env,
+): SecretStore | undefined {
+  if (secretStoreDisabled(env)) return undefined;
   if (process.platform === "darwin") {
     return canRun(run, "security", ["help"]) ? macosStore(run) : undefined;
   }
@@ -265,7 +284,13 @@ export function resolveSecretStore(run: RunFn = defaultRun): SecretStore | undef
  * there the user asked for something specific.
  */
 export class SecretStoreCredentialSource implements CredentialValueSource {
-  constructor(private readonly store: SecretStore | undefined = resolveSecretStore()) {}
+  /**
+   * The store is required, with no default that would resolve a real one.
+   * A parameter default cannot tell `undefined` meaning "this system has no
+   * store" from `undefined` meaning "not supplied" - and getting that wrong
+   * silently reaches the user's real keychain, including from a test.
+   */
+  constructor(private readonly store: SecretStore | undefined) {}
 
   read(): RawCredentialValues {
     const stored = this.store?.read();

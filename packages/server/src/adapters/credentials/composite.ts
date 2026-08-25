@@ -12,7 +12,7 @@ import {
   type CredentialValueSource,
   type RawCredentialValues,
 } from "./process-env.js";
-import { SecretStoreCredentialSource } from "./secret-store.js";
+import { SecretStoreCredentialSource, resolveSecretStore } from "./secret-store.js";
 import { WindowsUserEnvCredentialSource } from "./windows-user-env.js";
 
 const FIELD_BY_KEY = {
@@ -45,7 +45,7 @@ export class CompositeCredentialProvider implements CredentialPort {
   constructor(
     sources: NamedSource[] = [
       { name: "process", source: new ProcessEnvCredentialSource() },
-      { name: "secret-store", source: new SecretStoreCredentialSource() },
+      { name: "secret-store", source: new SecretStoreCredentialSource(resolveSecretStore()) },
       { name: "user-env", source: new WindowsUserEnvCredentialSource() },
     ],
   ) {

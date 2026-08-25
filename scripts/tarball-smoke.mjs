@@ -16,12 +16,21 @@
  * here invokes a bare `jam`: every command runs the binary from inside the
  * tarball install, so a globally linked JAM cannot stand in for it.
  *
- * One thing this deliberately cannot isolate: on Windows JAM falls back to the
- * *user* environment in the registry (HKCU\Environment), which no env override
- * reaches - that fallback exists precisely so a `setx` works without a new
- * shell. So credentials may legitimately resolve inside a sandbox here. What
- * the sandbox does prove is that runtime config and project config came from
- * the sandbox and not from the host, which is what the checks below assert.
+ * Credential sources need more than HOME to contain, and they differ:
+ *
+ *   Windows user env  HKCU\Environment - no env override reaches it. That
+ *                     fallback exists precisely so a `setx` works without a new
+ *                     shell, so credentials may legitimately resolve here.
+ *   macOS Keychain    reached through ~/Library/Keychains, so repointing HOME
+ *                     does contain it - measured, not assumed.
+ *   Linux libsecret   a D-Bus session service, not a path under HOME, so
+ *                     repointing HOME does NOT contain it.
+ *   Windows DPAPI     a file under ~/.jam, so HOME does contain it.
+ *
+ * Rather than depend on which of those happens to be path-based, the sandbox
+ * switches the secret store off outright. What it proves either way is that
+ * runtime config and project config came from the sandbox and not the host,
+ * which is what the checks below assert.
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -47,6 +56,9 @@ function isolatedEnv(home, extra = {}) {
     USERPROFILE: home,
     npm_config_cache: join(home, ".npm-cache"),
     NO_COLOR: "1",
+    // Set after the JAM_* strip above, or the loop would remove it. Keeps the
+    // sandbox off the developer's own secret store and off the network with it.
+    JAM_DISABLE_SECRET_STORE: "1",
     ...extra,
   };
 }

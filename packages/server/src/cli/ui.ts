@@ -89,6 +89,28 @@ export class NonInteractiveError extends Error {
   }
 }
 
+/**
+ * The one mapping of a prompt that could not run to an exit code.
+ *
+ * Returns undefined for anything else, which the caller must rethrow: a
+ * cancelled prompt is not a failure, and a missing terminal is guidance rather
+ * than a diagnosis, but a real fault must still surface as one.
+ */
+export function reportPromptError(err: unknown, ui: Ui): number | undefined {
+  if (err instanceof CancelledError) {
+    ui.line();
+    ui.warn("Cancelled. Nothing was changed.");
+    return 130;
+  }
+  if (err instanceof NonInteractiveError) {
+    ui.line();
+    ui.failure(err.message);
+    ui.next(`Run:  ${err.flagHint}`);
+    return 1;
+  }
+  return undefined;
+}
+
 export type Choice<T> = {
   value: T;
   label: string;
@@ -240,7 +262,18 @@ export class Ui {
             reject(new CancelledError());
             return;
           }
-          if (key.name === "backspace") {
+          // Every shape a delete arrives in. Terminals disagree: Backspace may
+          // send DEL (0x7f) or BS (0x08), and a Delete key can arrive as an
+          // escape sequence that readline names "delete". Matching only
+          // key.name === "backspace" leaves the rest to fall through to the
+          // printable branch, where they are stripped to "" and silently do
+          // nothing - which reads as "backspace is broken".
+          if (
+            key.name === "backspace" ||
+            key.name === "delete" ||
+            str === "\u007f" ||
+            str === "\b"
+          ) {
             if (buffer.length === 0) return;
             buffer = buffer.slice(0, -1);
             // Only an echoed prompt has anything on screen to erase.
@@ -262,7 +295,9 @@ export class Ui {
       });
     } finally {
       // Unlike select(), the listener is removed here too: a stray listener
-      // would let the next prompt receive the tail of a token.
+      // would let the next prompt receive the tail of a token. No cursor
+      // restore - this never hides it, and a no-op write would only suggest
+      // otherwise.
       this.input.setRawMode?.(wasRaw);
       this.input.pause();
     }

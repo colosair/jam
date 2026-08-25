@@ -216,3 +216,49 @@ describe("Ui.prompt", () => {
     expect(await answer).toBe("already@known.com");
   });
 });
+
+describe("Ui.readInput delete keys", () => {
+  // Terminals disagree on what Backspace sends, and a Delete key arrives as a
+  // named escape sequence. Every one of these has to erase a character, or the
+  // prompt looks broken while the buffer quietly keeps the text.
+  const deleteKeys: [string, string][] = [
+    ["DEL (0x7f)", "\u007f"],
+    ["BS (0x08)", "\b"],
+    ["Delete escape sequence", "\u001b[3~"],
+  ];
+
+  for (const [label, key] of deleteKeys) {
+    it(`erases on ${label}`, async () => {
+      const input = fakeInput();
+      const ui = new Ui({ stream: captureStream(true), input, color: false, interactive: true });
+
+      const answer = ui.prompt("Email", "hint");
+      await type(input, `abc${key}${key}x\r`);
+
+      expect(await answer).toBe("ax");
+    });
+  }
+
+  it("ignores a delete on an empty buffer", async () => {
+    const input = fakeInput();
+    const ui = new Ui({ stream: captureStream(true), input, color: false, interactive: true });
+
+    const answer = ui.prompt("Email", "hint");
+    await type(input, "\u007f\u007f\bok\r");
+
+    expect(await answer).toBe("ok");
+  });
+
+  it("erases in a masked prompt without putting anything on screen", async () => {
+    const stream = captureStream(true);
+    const input = fakeInput();
+    const ui = new Ui({ stream, input, color: false, interactive: true });
+
+    const answer = ui.secret("Token", "hint");
+    await type(input, "secr3t\u007f\u007fet\r");
+
+    expect(await answer).toBe("secret");
+    expect(stream.text()).not.toContain("secr");
+    expect(stream.text()).not.toContain("et");
+  });
+});
