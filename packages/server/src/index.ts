@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { doctor } from "./cli/doctor.js";
+import { showRuntime, useRuntime } from "./cli/runtime.js";
 import { serve } from "./cli/serve.js";
 import { setup } from "./cli/setup.js";
 import { toJamError } from "./domain/errors.js";
@@ -11,6 +12,9 @@ Usage:
   jam doctor              Diagnose config, credentials and Jira connectivity
   jam setup [--project KEY]
                           Wire up this project (project.yaml, .mcp.json) and run doctor
+  jam runtime             Show which JAM build this machine runs
+  jam runtime use package | development <path>
+                          Change it (writes ~/.jam/config.yaml only, never a project)
 
 Environment:
   JIRA_BASE_URL     https://your-site.atlassian.net
@@ -42,6 +46,12 @@ async function main(): Promise<number> {
     case "setup": {
       const explicitKey = findFlagValue(rest, "--project");
       return setup(explicitKey ? { explicitKey } : {});
+    }
+
+    case "runtime": {
+      const json = rest.includes("--json");
+      if (rest[0] === "use") return useRuntime(rest[1], rest[2], { json });
+      return showRuntime({ json });
     }
 
     case "help":

@@ -1,13 +1,18 @@
 {
-  "name": "@jam-mcp/server",
+  "name": "@jam-mcp/launcher",
   "version": "1.0.0",
-  "description": "JAM (Jira Agent MCP) - agent-facing Jira access layer: MCP server, setup core, and CLI",
+  "description": "JAM launcher - resolves which JAM runtime to run and dispatches to it",
   "type": "module",
   "bin": {
-    "jam": "dist/index.js"
+    "jam-launcher": "dist/cli.js"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./runtime-config": "./dist/runtime-config.js",
+    "./runtime-resolver": "./dist/runtime-resolver.js"
+  },
   "engines": {
     "node": ">=20"
   },
@@ -17,15 +22,10 @@
   ],
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run"
   },
   "dependencies": {
-    "@jam-mcp/launcher": "1.0.0",
-    "@modelcontextprotocol/sdk": "^1.30.0",
-    "yaml": "^2.9.0",
-    "zod": "^4.4.3"
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
