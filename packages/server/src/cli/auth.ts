@@ -2,6 +2,7 @@ import { CompositeCredentialProvider } from "../adapters/credentials/composite.j
 import {
   SecretStoreUnavailableError,
   resolveSecretStore,
+  secretStoreDisabled,
   type SecretStore,
   type StoredCredentials,
 } from "../adapters/credentials/secret-store.js";
@@ -55,6 +56,14 @@ export async function authLoginCommand(options: AuthOptions = {}): Promise<numbe
   ui.section("Authentication");
 
   if (!store) {
+    // Disabled and absent are different problems with different fixes, and
+    // saying "no store" when one was switched off sends the user hunting.
+    if (secretStoreDisabled()) {
+      ui.failure("Secret store disabled by JAM_DISABLE_SECRET_STORE");
+      ui.line("  That variable is for isolated test sandboxes. Unset it and run this again,");
+      ui.line(`  or ${ENV_HINT}.`);
+      return 1;
+    }
     ui.failure("No usable secret store was found on this system");
     ui.line("  JAM stores credentials where the operating system holds them for you,");
     ui.line("  so an editor launched from a Dock or Start menu can still read them.");
@@ -63,20 +72,22 @@ export async function authLoginCommand(options: AuthOptions = {}): Promise<numbe
   }
 
   const existing = readBack().describe();
-  const baseUrl = trimSlashes(
-    await ui.prompt("Jira site URL", ENV_HINT, existing.baseUrl ?? undefined),
-  );
+  // Any page from their Jira site, pasted whole. Nobody should have to know
+  // what an origin is, or strip a path by hand, to log in.
+  const pasted = await ui.prompt("Paste your Jira URL", ENV_HINT, existing.baseUrl ?? undefined);
+  const baseUrl = toJiraOrigin(pasted);
+  if (!baseUrl) {
+    ui.failure("That does not look like a Jira URL");
+    ui.line("  Paste any page URL from your Jira site.");
+    return 1;
+  }
+
   const email = await ui.prompt("Atlassian account email", ENV_HINT, existing.email ?? undefined);
   ui.line(`  Create a token at ${TOKEN_URL}`);
   const apiToken = await ui.secret("Atlassian API token", ENV_HINT);
 
-  const missing = !baseUrl || !email || !apiToken;
-  if (missing) {
+  if (!email || !apiToken) {
     ui.failure("Site URL, email and token are all required");
-    return 1;
-  }
-  if (!/^https?:\/\//.test(baseUrl)) {
-    ui.failure("The site URL must start with http:// or https://");
     return 1;
   }
 
@@ -186,6 +197,21 @@ async function verifyAgainstJira(ui: Ui, values: StoredCredentials): Promise<str
   }
 }
 
-function trimSlashes(value: string): string {
-  return value.trim().replace(/\/+$/, "");
+/**
+ * The origin of any URL from the user's Jira site, or undefined.
+ *
+ * Parsed rather than trimmed, because a pathname is the failure that actually
+ * happens: someone copies the project page URL, and JiraClient resolves each
+ * REST path *relative* to the base, so `/jira/software/c/projects/KEY/summary`
+ * gets the API path appended to it. Atlassian answers that with its HTML shell
+ * at 200, and the only symptom is "Jira returned a non-JSON response".
+ */
+export function toJiraOrigin(input: string): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(input.trim());
+  } catch {
+    return undefined;
+  }
+  return url.protocol === "http:" || url.protocol === "https:" ? url.origin : undefined;
 }

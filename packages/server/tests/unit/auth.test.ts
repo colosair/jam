@@ -4,7 +4,7 @@ import type {
   SecretStore,
   StoredCredentials,
 } from "../../src/adapters/credentials/secret-store.js";
-import { authLoginCommand, authLogoutCommand } from "../../src/cli/auth.js";
+import { authLoginCommand, authLogoutCommand, toJiraOrigin } from "../../src/cli/auth.js";
 import { Ui } from "../../src/cli/ui.js";
 import type { CredentialDescription, CredentialPort } from "../../src/ports/credentials.port.js";
 
@@ -131,7 +131,26 @@ describe("jam auth login", () => {
     expect(stream.text()).toMatch(/Nothing was stored/);
   });
 
-  it("rejects a site URL without a scheme before contacting anything", async () => {
+  it("accepts a whole project page URL and stores only its origin", async () => {
+    // What people actually paste. Anything past the origin would be appended to
+    // every REST path, and Jira would answer with its HTML shell at 200.
+    const stream = captureStream();
+    const input = fakeInput();
+    const ui = new Ui({ stream, input, color: false, interactive: true });
+    const store = fakeStore();
+
+    const run = authLoginCommand({ ui, store, verify: accepts, readBack: () => port(storedOnly) });
+    await answer(input, [
+      "https://your-site.atlassian.net/jira/software/c/projects/PROJECT/summary",
+      EMAIL,
+      SECRET,
+    ]);
+
+    expect(await run).toBe(0);
+    expect(store.held?.baseUrl).toBe("https://your-site.atlassian.net");
+  });
+
+  it("rejects a URL it cannot parse, before asking for anything else", async () => {
     const stream = captureStream();
     const input = fakeInput();
     const ui = new Ui({ stream, input, color: false, interactive: true });
@@ -147,12 +166,12 @@ describe("jam auth login", () => {
         return undefined;
       },
     });
-    await answer(input, ["example.atlassian.net", EMAIL, SECRET]);
+    await answer(input, ["example.atlassian.net"]);
 
     expect(await run).toBe(1);
     expect(verified).toBe(false);
     expect(store.writes).toBe(0);
-    expect(stream.text()).toMatch(/must start with http/);
+    expect(stream.text()).toMatch(/does not look like a Jira URL/);
   });
 
   it("warns when an exported variable shadows part of what was stored", async () => {
@@ -272,4 +291,28 @@ describe("jam auth logout", () => {
     expect(code).toBe(0);
     expect(stream.text()).toMatch(/Part of a Jira credential still resolves/);
   });
+});
+
+describe("toJiraOrigin", () => {
+  const cases: [string, string | undefined][] = [
+    ["https://your-site.atlassian.net", "https://your-site.atlassian.net"],
+    ["https://your-site.atlassian.net/", "https://your-site.atlassian.net"],
+    ["  https://your-site.atlassian.net///  ", "https://your-site.atlassian.net"],
+    [
+      "https://your-site.atlassian.net/jira/software/c/projects/PROJECT/summary",
+      "https://your-site.atlassian.net",
+    ],
+    ["https://your-site.atlassian.net/browse/PROJECT-234?foo=1#x", "https://your-site.atlassian.net"],
+    ["http://localhost:8080/jira/x", "http://localhost:8080"],
+    ["your-site.atlassian.net", undefined],
+    ["", undefined],
+    ["file:///etc/passwd", undefined],
+    ["javascript:alert(1)", undefined],
+  ];
+
+  for (const [input, expected] of cases) {
+    it(`${JSON.stringify(input)} -> ${String(expected)}`, () => {
+      expect(toJiraOrigin(input)).toBe(expected);
+    });
+  }
 });

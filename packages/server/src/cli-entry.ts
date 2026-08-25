@@ -4,7 +4,7 @@ import { showRuntime, useRuntime } from "./cli/runtime.js";
 import { serve } from "./cli/serve.js";
 import { setup } from "./cli/setup.js";
 import { runSetupWizard } from "./cli/setup-wizard.js";
-import { CancelledError, NonInteractiveError, Ui } from "./cli/ui.js";
+import { reportPromptError, Ui } from "./cli/ui.js";
 import {
   authStatusCommand,
   doctorJsonCommand,
@@ -66,18 +66,9 @@ async function withPrompts(run: () => Promise<number>): Promise<number> {
   try {
     return await run();
   } catch (err) {
-    if (err instanceof CancelledError) {
-      ui.line();
-      ui.warn("Cancelled. Nothing was changed.");
-      return 130;
-    }
-    if (err instanceof NonInteractiveError) {
-      ui.line();
-      ui.failure(err.message);
-      ui.next(`Run:  ${err.flagHint}`);
-      return 1;
-    }
-    throw err;
+    const code = reportPromptError(err, ui);
+    if (code === undefined) throw err;
+    return code;
   }
 }
 

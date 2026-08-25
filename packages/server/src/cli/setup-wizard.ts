@@ -1,5 +1,6 @@
 import { writeRuntimeConfig, type RuntimeMode } from "@jam-mcp/launcher";
 import { runHealthGate } from "../bootstrap/boot-health-gate.js";
+import { authLoginCommand } from "./auth.js";
 import { listVisibleProjects } from "../bootstrap/jira-projects.js";
 import {
   checkMigrationTarget,
@@ -11,7 +12,10 @@ import { computeSetupPlan, type SetupPlan } from "../bootstrap/setup-plan.js";
 import { detectSetupState, type SetupState } from "../bootstrap/setup-state.js";
 import { buildDeps } from "../deps.js";
 import { toJamError } from "../domain/errors.js";
-import { CancelledError, NonInteractiveError, Ui } from "./ui.js";
+import type { CredentialPort } from "../ports/credentials.port.js";
+import type { JiraReadPort } from "../ports/jira-read.port.js";
+import type { AuthOptions } from "./auth.js";
+import { CancelledError, reportPromptError, Ui } from "./ui.js";
 
 export type WizardOptions = {
   cwd?: string;
@@ -19,6 +23,16 @@ export type WizardOptions = {
   explicitKey?: string;
   migrate?: boolean;
   ui?: Ui;
+  /**
+   * Injected by tests. Without these the wizard reads the machine it runs on -
+   * the real keychain through `detectSetupState`, the real Jira through
+   * `listVisibleProjects` and the health gate, and the real `JAM_PROJECT_KEY`
+   * through the plan. Production passes none of them and behaves as before.
+   */
+  credentials?: CredentialPort;
+  jira?: JiraReadPort;
+  env?: NodeJS.ProcessEnv;
+  auth?: AuthOptions;
 };
 
 /**
@@ -34,7 +48,7 @@ export async function runSetupWizard(options: WizardOptions = {}): Promise<numbe
   const cwd = options.cwd ?? process.cwd();
 
   try {
-    let state = detectSetupState({ cwd, ...(options.home ? { home: options.home } : {}) });
+    let state = detectSetupState(detectOptions(options, cwd));
 
     // Everything already in place: show status and offer actions rather than
     // marching through a wizard the user has completed before.
@@ -49,27 +63,19 @@ export async function runSetupWizard(options: WizardOptions = {}): Promise<numbe
     ui.line("  Configure JAM for this machine.");
 
     state = await ensureRuntime(ui, state, options);
-    reportCredentials(ui, state);
+    state = await ensureCredentials(ui, state, options);
 
     const outcome = await wireProject(ui, state, options);
     if (outcome !== 0) return outcome;
 
-    return await verify(ui, state.project.root);
+    return await verify(ui, state.project.root, options);
   } catch (err) {
-    if (err instanceof CancelledError) {
-      ui.line();
-      ui.warn("Cancelled. Nothing was changed.");
-      return 130;
-    }
-    if (err instanceof NonInteractiveError) {
-      // Not a JAM or Jira fault - there is simply nobody to answer. Say what
-      // to run instead of surfacing this as a diagnostic failure.
-      ui.line();
-      ui.failure(err.message);
-      ui.next(`Run:  ${err.flagHint}`);
-      return 1;
-    }
-    throw err;
+    // Not a JAM or Jira fault - there is simply nobody to answer, or the person
+    // changed their mind. Shared with `jam auth login` so both say the same
+    // thing.
+    const code = reportPromptError(err, ui);
+    if (code === undefined) throw err;
+    return code;
   }
 }
 
@@ -111,7 +117,7 @@ async function runStatusMenu(
     [
       { value: "health", label: "Run health check", hint: "Verify Jira connectivity now." },
       { value: "runtime", label: "Change runtime", hint: "Switch between the package and a local checkout." },
-      { value: "auth", label: "Re-authenticate", hint: "Show how to replace the stored credentials." },
+      { value: "auth", label: "Re-authenticate", hint: "Replace the stored credentials." },
       { value: "repair", label: "Repair project setup", hint: "Re-apply project.yaml and .mcp.json wiring." },
       { value: "exit", label: "Exit", hint: "" },
     ],
@@ -120,14 +126,13 @@ async function runStatusMenu(
 
   switch (action) {
     case "health":
-      return verify(ui, state.project.root);
+      return verify(ui, state.project.root, options);
     case "runtime":
       await chooseRuntime(ui, options);
       return 0;
     case "auth":
       ui.line();
-      ui.next("Set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN, then run `jam doctor`.");
-      return 0;
+      return await authLoginCommand({ ui, ...options.auth });
     case "repair": {
       const plan = computeSetupPlanWithPreflight(state, planOptions(options), probe(ui));
       const applied = applySetupPlan(plan);
@@ -135,7 +140,7 @@ async function runStatusMenu(
       if (applied.changesApplied) ui.success("Project wiring repaired");
       else ui.success("Nothing to repair");
       if (reportMigrationRefused(ui, plan)) return 1;
-      return verify(ui, state.project.root);
+      return verify(ui, state.project.root, options);
     }
     case "exit":
       return 0;
@@ -159,10 +164,7 @@ async function ensureRuntime(
   }
 
   await chooseRuntime(ui, options);
-  return detectSetupState({
-    cwd: options.cwd ?? process.cwd(),
-    ...(options.home ? { home: options.home } : {}),
-  });
+  return detectSetupState(detectOptions(options));
 }
 
 async function chooseRuntime(ui: Ui, options: WizardOptions): Promise<void> {
@@ -194,8 +196,21 @@ async function chooseRuntime(ui: Ui, options: WizardOptions): Promise<void> {
   throw new CancelledError();
 }
 
-function reportCredentials(ui: Ui, state: SetupState): void {
+/**
+ * Report the credentials, or offer to store some - and then look again.
+ *
+ * A step, not a printout: `jam auth login` changes the machine, so continuing
+ * with the snapshot taken before it would carry `credentials.present = false`
+ * into the plan and the health gate, and the wizard would report a missing
+ * credential it had just watched the user supply.
+ */
+async function ensureCredentials(
+  ui: Ui,
+  state: SetupState,
+  options: WizardOptions,
+): Promise<SetupState> {
   ui.section("Authentication");
+
   if (state.credentials.present) {
     // Found and usable - stating it is enough. Asking "use these?" would be a
     // question with one sensible answer.
@@ -203,10 +218,33 @@ function reportCredentials(ui: Ui, state: SetupState): void {
       "Jira credentials found",
       `${state.credentials.email} · ${state.credentials.baseUrl} (${state.credentials.source})`,
     );
-    return;
+    return state;
   }
+
+  if (!ui.interactive) {
+    // Nobody to ask. Setup still wires the project and stops at the human step.
+    ui.warn("Jira credentials are not configured");
+    ui.line("  Run `jam auth login`, or set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN.");
+    return state;
+  }
+
   ui.warn("Jira credentials are not configured");
-  ui.line("  Set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN for your user.");
+  if ((await authLoginCommand({ ui, ...options.auth })) !== 0) return state;
+
+  // Look again. `auth login` changed the machine, and every later step reads
+  // this snapshot - carrying the stale one forward would plan and verify
+  // against a credential the user just watched themselves supply.
+  const fresh = detectSetupState(detectOptions(options));
+  if (fresh.credentials.present) {
+    // Reported from the refreshed state on purpose: this line is what says the
+    // rest of setup is working from the new credential, and where it resolves
+    // from - which is not always the store, if an export is shadowing it.
+    ui.success(
+      "Jira credentials found",
+      `${fresh.credentials.email} · ${fresh.credentials.baseUrl} (${fresh.credentials.source})`,
+    );
+  }
+  return fresh;
 }
 
 async function wireProject(ui: Ui, state: SetupState, options: WizardOptions): Promise<number> {
@@ -225,7 +263,7 @@ async function wireProject(ui: Ui, state: SetupState, options: WizardOptions): P
   }
 
   if (plan.code === "JAM_PROJECT_SELECTION_REQUIRED") {
-    return reportSelectionRequired(ui, state);
+    return reportSelectionRequired(ui, state, options);
   }
 
   if (plan.changes.length === 0) {
@@ -273,14 +311,18 @@ function reportMigrationRefused(ui: Ui, plan: SetupPlan): boolean {
   return true;
 }
 
-async function reportSelectionRequired(ui: Ui, state: SetupState): Promise<number> {
+async function reportSelectionRequired(
+  ui: Ui,
+  state: SetupState,
+  options: WizardOptions,
+): Promise<number> {
   ui.failure("No Jira project key could be determined safely");
   ui.line(`  Nothing under ${state.project.root} says which Jira project this is,`);
   ui.line("  and JAM does not guess one from a directory or repository name.");
 
   // Network call, so this one earns a spinner.
   const { projects, truncated, error } = await ui.spin("Listing Jira projects...", () =>
-    listVisibleProjects(),
+    listVisibleProjects(options.credentials),
   );
 
   ui.line();
@@ -298,12 +340,17 @@ async function reportSelectionRequired(ui: Ui, state: SetupState): Promise<numbe
   return 1;
 }
 
-async function verify(ui: Ui, root: string): Promise<number> {
+async function verify(ui: Ui, root: string, options: WizardOptions): Promise<number> {
   ui.section("Verify");
 
   let deps: Awaited<ReturnType<typeof buildDeps>>;
   try {
-    deps = await buildDeps({ cwd: root, bootstrap: false });
+    deps = await buildDeps({
+      cwd: root,
+      bootstrap: false,
+      ...(options.credentials ? { credentials: options.credentials } : {}),
+      ...(options.jira ? { jira: options.jira } : {}),
+    });
   } catch (err) {
     ui.failure("Project config", toJamError(err).message);
     return 1;
@@ -338,6 +385,16 @@ function planOptions(options: WizardOptions): Parameters<typeof computeSetupPlan
   return {
     ...(options.explicitKey ? { explicitKey: options.explicitKey } : {}),
     ...(options.migrate ? { migrate: options.migrate } : {}),
+    ...(options.env ? { env: options.env } : {}),
+  };
+}
+
+/** Detect options, with the test seams threaded through. */
+function detectOptions(options: WizardOptions, cwd?: string) {
+  return {
+    cwd: cwd ?? options.cwd ?? process.cwd(),
+    ...(options.home ? { home: options.home } : {}),
+    ...(options.credentials ? { credentials: options.credentials } : {}),
   };
 }
 
