@@ -738,6 +738,11 @@ OAuthCredentialAdapter
 
 Credential은 Git에 저장하지 않는다.
 
+D9에서 `SecretStoreCredentialSource`가 추가되어 credential은 사용자의 OS
+secret store(macOS Keychain / Linux libsecret / Windows DPAPI)에서도 해석된다.
+이는 여전히 API token 방식이며, 위의 `OAuthCredentialAdapter` 방향을 대체한 것이
+아니라 그 전 단계다.
+
 ---
 
 ## 9.5 TelemetryPort

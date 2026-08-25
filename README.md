@@ -52,12 +52,29 @@ then on it's just `claude` or `codex` inside any wired project.
 
 **For a coding agent** — see [Setup with a coding agent](#setup-with-a-coding-agent).
 
-Credentials come from your environment (never a repo):
+Authenticate once, and the credentials live where your operating system keeps
+them for you — never in a repo:
+
+```bash
+jam auth login
+```
+
+Paste any page URL from your Jira site, your Atlassian account email, and an
+[API token](https://id.atlassian.com/manage-profile/security/api-tokens). JAM
+checks the credentials against Jira before storing anything, and the token is
+never echoed. `jam auth logout` removes them again.
+
+This is also what makes JAM work in an editor started from a Dock or Start menu:
+that process never sourced a shell profile, so it has nothing to inherit — but
+it can still read what the OS holds for you.
+
+Environment variables remain supported as an explicit override, for CI and for
+existing setups, and they win over the stored credentials:
 
 ```bash
 export JIRA_BASE_URL=https://your-site.atlassian.net
 export JIRA_EMAIL=you@example.com
-export JIRA_API_TOKEN=...   # https://id.atlassian.com/manage-profile/security/api-tokens
+export JIRA_API_TOKEN=...
 ```
 
 On Windows a value set with `setx` doesn't reach `process.env` until a new
@@ -111,7 +128,9 @@ jam setup [--project KEY] [--migrate]
 jam runtime                  Show which JAM build this machine runs
 jam runtime use package | development <path>
                              Change it (writes ~/.jam/config.yaml only, never a project)
+jam auth login               Store Jira credentials in this user's OS secret store
 jam auth status              Whether Jira credentials are configured
+jam auth logout              Remove the stored credentials
 ```
 
 `jam doctor` answers one question fast — is this a Jira problem, a credential
@@ -257,9 +276,11 @@ Inside `packages/server`, layout follows ports & adapters — `src/domain`,
 
 ## Security
 
-- Credentials come from `CompositeCredentialProvider` (process env, then
-  Windows User env) through `CredentialPort`, and are read only where the
-  HTTP request is built.
+- Credentials come from `CompositeCredentialProvider` (process env, then this
+  user's OS secret store, then Windows User env) through `CredentialPort`, and
+  are read only where the HTTP request is built. Nothing is stored in a project
+  file. On macOS that store is the login Keychain, on Linux libsecret, and on
+  Windows a file encrypted to your user account with DPAPI.
 - The `Authorization` header, the API token, and raw Jira error payloads never
   appear in logs, telemetry, `describe()`, config files, or tool results.
 - `stdout` is reserved for the MCP protocol; all diagnostics go to `stderr`.

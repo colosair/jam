@@ -69,8 +69,13 @@ guess a Jira project key, overwrite unrelated `.mcp.json` entries, or assemble
 `project.yaml` / `.mcp.json` by hand.
 
 Stop only for `JAM_PROJECT_SELECTION_REQUIRED` (ask which Jira project) and
-`JAM_AUTH_REQUIRED` (ask the user to authenticate). Finish with
-`jam doctor --json`.
+`JAM_AUTH_REQUIRED` (tell the user to run `jam auth login` themselves). Finish
+with `jam doctor --json`.
+
+Authentication is the one step that is not yours to do. Never ask for an API
+token, never accept one that is offered, never store one, and never run
+`jam auth login` on someone's behalf - it is interactive and human-only by
+design. Report `JAM_AUTH_REQUIRED` and stop.
 
 ## This repo
 

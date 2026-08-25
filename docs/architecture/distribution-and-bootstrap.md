@@ -156,6 +156,45 @@ is what keeps the purity above literally true rather than aspirational.
 | `JAM_MCP_CONFIG_UNREADABLE` | `.mcp.json` is not valid JSON — refuse, do not overwrite |
 | `JAM_MIGRATION_TARGET_UNAVAILABLE` | `--migrate` was asked for, but the launcher package could not be resolved — `.mcp.json` left unchanged |
 
+### Where credentials come from
+
+```text
+process environment  →  this user's OS secret store  →  Windows User environment
+```
+
+The environment stays first, so a per-session override still wins and CI keeps
+working unchanged. The secret store comes next because it is the only source an
+editor launched from a Dock or Start menu can reach — such a process never
+sourced a shell profile, so it has no `JIRA_*` to inherit and the MCP child it
+spawns has none either. `jam auth login` writes it; `jam auth status` reports
+presence and origin, never the value.
+
+Merging is per field, so one stale `export` can shadow part of a stored
+credential; that shows up as `source: mixed`, and `auth login` and `auth logout`
+both say so rather than leaving the user to work it out.
+
+| Platform | Backend |
+|---|---|
+| macOS | login Keychain, via `security` |
+| Linux | libsecret, via `secret-tool` |
+| Windows | a file under `~/.jam` encrypted to the current user with DPAPI |
+
+Windows uses DPAPI because Credential Manager cannot be read back without a
+P/Invoke or a module that is not installed by default. **The confidentiality
+boundary there is DPAPI's current-user binding**; the `0o600` mode on the file
+is best-effort hardening on top, and carries no POSIX guarantee on Windows.
+
+Being on a platform is not the same as having a store. A container or a headless
+Linux box routinely has neither libsecret nor a session keyring, so the backend
+is probed rather than assumed, and `jam auth login` says which of "absent" and
+"switched off for a sandbox" it hit.
+
+On macOS the token reaches `security` as an argument rather than on stdin,
+because `security` reads its own `-w` prompt from the controlling terminal. It
+is collected only through a masked prompt, never written to a repo, config file
+or shell history, and the child that carries it lives for one call. Replacing
+that needs a native API or OAuth, which D9 deliberately does not add.
+
 `JAM_PROJECT_CONFIG_INVALID` and `JAM_MCP_CONFIG_UNREADABLE` are stops rather
 than failures: they hold the user's own settings, so "fixing" them by
 overwriting would destroy the thing that needs fixing.
@@ -251,7 +290,7 @@ complete on its own.
 | D6 Common launcher | done |
 | D7 Project wiring and migration | done |
 | D8 Documentation of record | done |
-| D9 `jam auth login/status/logout`, OS secret store | planned |
+| D9 `jam auth login/status/logout`, OS secret store | implemented — macOS device verified; Linux and Windows injected-runner verified, device verification pending |
 | D10 Degraded auth startup — serve connects, tools return `JAM_AUTH_REQUIRED` | planned |
 | D11 Project-required `runtime.jamVersion` | planned |
 | D12 Standalone binary | only on real demand |
@@ -281,7 +320,11 @@ What each layer is actually held to:
   is confirmed resolvable.
 - **Security** — no credential written project-side, no development path
   written project-side, no PATH or user-environment mutation, no fuzzy project
-  inference, no `@latest` in anything executable.
+  inference, no `@latest` in anything executable. Secret-store backends are
+  exercised only through an injected runner, and the source that reads them
+  takes its store as a required argument, so no test can reach a real keychain,
+  libsecret session or DPAPI blob. The tarball sandbox switches the store off
+  outright rather than relying on which backends happen to live under `HOME`.
 - **MCP contract** — exactly three tools, unchanged.
 
 Package paths are covered by `npm run pack:all` and `npm run smoke`, which

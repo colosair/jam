@@ -114,7 +114,29 @@ internal vocabulary; what a user knows is whether they are using it or working
 on it. Default is Use JAM.
 
 **Cancellation is safe and says so.** Esc and Ctrl-C exit with a message
-confirming nothing was changed.
+confirming nothing was changed. That holds for a half-typed token too.
+
+**Ask for what someone has, not for what the code wants.** `jam auth login` asks
+you to *paste your Jira URL* — any page from your site — and takes the origin
+itself. Nobody should have to know what an origin is, or delete a path by hand,
+to log in. A URL that cannot be parsed is refused locally, before Jira is
+contacted, and says to paste a page URL rather than naming a scheme.
+
+**Secrets are never echoed.** A token prompt prints nothing at all as you
+type — no characters, no bullets, no length. Backspace and Delete work in every
+form a terminal sends them, and every exit path restores raw mode and removes
+the key listener, so nothing typed into one prompt can reach the next.
+
+**Credentials are checked before they are stored.** `auth login` calls Jira
+first; if Jira rejects them, nothing is written and it says so. Storing a
+rejected token is the worst outcome available — every later command fails, and
+the thing that is wrong looks like the thing that was just fixed.
+
+**An override is reported, not silently obeyed.** If a `JIRA_*` variable shadows
+what was just stored, `auth login` names the effective source. Merging is per
+field, so it distinguishes shadowing *part* of a credential from shadowing all
+of it. `auth logout` does the same in reverse: removing the stored copy is not
+the same as being logged out, and it says which is true.
 
 ## Re-running
 
@@ -183,6 +205,19 @@ No boxes. State the problem, then the comparison or the action:
 › Re-authenticate
 ```
 
+That last action is a real one: the status menu's **Re-authenticate** runs
+`jam auth login`, it does not print instructions for exporting variables.
+
+Without a terminal, `auth login` refuses rather than degrading - a token cannot
+be asked for, and accepting one from a flag or a pipe would put it in argv and
+shell history:
+
+```text
+× Paste your Jira URL cannot be asked without a terminal.
+
+› Run:  set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN instead
+```
+
 ```text
 × Migration target is not available from the configured npm registry
 
@@ -239,7 +274,8 @@ The contract:
 - Diagnostics go to stderr.
 - Status codes are stable and branchable; callers must never have to
   pattern-match prose.
-- Credentials never appear. `auth status` reports presence and origin only.
+- Credentials never appear. `auth status` reports presence and origin only,
+  and is always JSON - it has no human-facing form to drift from.
 
 Human-facing colour output and the machine interface are separate paths. Adding
 a decorative line to the JSON path is a breaking change.
