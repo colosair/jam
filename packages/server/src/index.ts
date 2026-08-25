@@ -3,6 +3,7 @@ import { doctor } from "./cli/doctor.js";
 import { showRuntime, useRuntime } from "./cli/runtime.js";
 import { serve } from "./cli/serve.js";
 import { setup } from "./cli/setup.js";
+import { runSetupWizard } from "./cli/setup-wizard.js";
 import { toJamError } from "./domain/errors.js";
 
 const USAGE = `jam - Jira Agent MCP
@@ -10,7 +11,7 @@ const USAGE = `jam - Jira Agent MCP
 Usage:
   jam serve               Run the MCP server over stdio (default; this is what Claude Code / Codex launch)
   jam doctor              Diagnose config, credentials and Jira connectivity
-  jam setup [--project KEY] [--migrate]
+  jam setup [--project KEY] [--migrate] [--non-interactive]
                           Wire up this project (project.yaml, .mcp.json) and run doctor
   jam runtime             Show which JAM build this machine runs
   jam runtime use package | development <path>
@@ -45,10 +46,13 @@ async function main(): Promise<number> {
 
     case "setup": {
       const explicitKey = findFlagValue(rest, "--project");
-      return setup({
+      const shared = {
         ...(explicitKey ? { explicitKey } : {}),
         ...(rest.includes("--migrate") ? { migrate: true } : {}),
-      });
+      };
+      // The wizard can ask; the plain path never does. Anything scripted or
+      // agent-driven takes the second, so a question can never block it.
+      return rest.includes("--non-interactive") ? setup(shared) : runSetupWizard(shared);
     }
 
     case "runtime": {
