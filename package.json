@@ -1,0 +1,37 @@
+{
+  "name": "jira-agent-mcp",
+  "version": "0.1.0",
+  "description": "JAM (Jira Agent MCP) - an agent-facing Jira access layer for Claude Code and Codex",
+  "type": "module",
+  "bin": {
+    "jam": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "doctor": "node dist/index.js doctor",
+    "serve": "node dist/index.js serve"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.11"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
