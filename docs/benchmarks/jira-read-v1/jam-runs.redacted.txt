@@ -1,0 +1,78 @@
+JAM jira_search — reconstructed measurement record
+==================================================
+
+WHAT THIS FILE IS
+-----------------
+A structured, anonymised record of the measurements reported during the live
+comparison session. The original terminal transcript was not preserved, so
+this is a reconstruction of the reported figures, not a copy of raw output.
+See evidence-manifest.md for exactly what this does and does not establish.
+
+All identifiers are placeholders: PROJECT for the Jira project key,
+PROJECT-101 style for issue keys, CURRENT_USER for the account, and
+https://example.atlassian.net for the site. Issue summaries are deliberately
+omitted — they are not needed to establish any of the figures below.
+
+WORKLOAD
+--------
+tool             jira_search
+query            list-style JQL, open issues in PROJECT, ordered by updated desc
+scope            preview (default)
+repetitions      3
+transport        real remote Jira Cloud call, no cache (NoopCache), no replay
+
+PER-RUN TIMING
+--------------
+run   tool-side (ms)   wall (ms)
+1     2652             4537
+2     2809             4833
+3     2856             5672
+
+tool-side mean   (2652 + 2809 + 2856) / 3 = 2772.33 ms   -> reported as 2,772 ms
+wall mean        (4537 + 4833 + 5672) / 3 = 5014.00 ms   -> reported as 5,014 ms
+
+tool-side range  2652 .. 2856 ms
+wall range       4537 .. 5672 ms
+
+RESULT SHAPE (identical across all three runs)
+----------------------------------------------
+issues returned            17
+payload                    4,621 bytes
+characters                 4,083
+tool-result tokens         ~1,335   (ESTIMATE — see methodology.md)
+pages fetched              1
+Jira operations per call   1
+meta.complete              true
+
+FIELDS RETAINED (8)
+-------------------
+key
+summary
+status
+updated
+labels
+components
+assignee
+priority
+
+Information needed for a listing judgement that was missing: 0
+
+METADATA NOT RETURNED
+---------------------
+Representative fields present in the baseline path and absent here:
+
+self
+avatarUrls
+statusCategory
+expand
+iconUrl
+raw nested account metadata
+description
+
+AGENT-SIDE OUTCOME
+------------------
+run 1   result entered agent context directly — no overflow, no recovery step
+run 2   result entered agent context directly — no overflow, no recovery step
+run 3   result entered agent context directly — no overflow, no recovery step
+
+3/3 usable without any additional extraction, file handling, or follow-up call.

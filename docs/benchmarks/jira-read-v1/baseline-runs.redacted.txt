@@ -1,0 +1,87 @@
+Baseline Jira MCP (default field set) — reconstructed measurement record
+=======================================================================
+
+WHAT THIS FILE IS
+-----------------
+A structured, anonymised record of the measurements reported during the live
+comparison session. The original terminal transcript was not preserved, so
+this is a reconstruction of the reported figures, not a copy of raw output.
+See evidence-manifest.md for exactly what this does and does not establish.
+
+All identifiers are placeholders: PROJECT for the Jira project key,
+PROJECT-101 style for issue keys, CURRENT_USER for the account, and
+https://example.atlassian.net for the site. Issue summaries are deliberately
+omitted.
+
+WORKLOAD
+--------
+tool             existing Jira MCP JQL search, default fields (none specified)
+query            same list-style JQL as the JAM runs, same project, same order
+repetitions      3
+transport        real remote Jira Cloud call
+note             results were not reused between the two approaches; each run
+                 issued its own remote call
+
+PER-RUN TIMING
+--------------
+run   tool-side (ms)   wall (ms)
+1     3872             7818
+2     5045             7422
+3     4816             7507
+
+tool-side mean   (3872 + 5045 + 4816) / 3 = 4577.67 ms   -> reported as 4,578 ms
+wall mean        (7818 + 7422 + 7507) / 3 = 7582.33 ms   -> reported as 7,582 ms
+
+tool-side range  3872 .. 5045 ms
+wall range       7422 .. 7818 ms
+
+RESULT SHAPE (identical across all three runs)
+----------------------------------------------
+issues returned            17          (same 17 as the JAM runs)
+payload                    93,320 bytes
+characters                 87,252
+tool-result tokens         ~25,335   (ESTIMATE — see methodology.md)
+pages fetched              1
+remote path                resource / cloud lookup, then the Jira query
+                           -> 2+ operations per call
+
+AGENT-SIDE OUTCOME
+------------------
+run 1   overflow: "result exceeds maximum allowed tokens"
+run 2   overflow: "result exceeds maximum allowed tokens"
+run 3   overflow: "result exceeds maximum allowed tokens"
+
+3/3 failed to enter agent context directly. Each run required additional
+recovery work — writing the result to a file and extracting fields with jq or
+equivalent — before the data could be used.
+
+UNREQUESTED METADATA PRESENT
+----------------------------
+Fields repeated across the 17 issues that a listing judgement does not use:
+
+self
+avatarUrls
+iconUrl
+avatar size variants
+accountId
+timeZone
+accountType
+active
+statusCategory
+expand
+avatarId
+hierarchyLevel
+subtask
+
+Also included, despite the query being a listing query:
+
+description                11,995 bytes
+                           ~12.9% of total payload
+                           (11995 / 93320 = 0.1285)
+
+Reducing the same 17 issues to the field set JAM returns yields roughly 4.4 KB,
+consistent with the JAM measurement of 4,621 bytes. Most of the original
+payload is not related to a listing judgement.
+
+Information needed for a listing judgement that was missing: 0
+(the baseline returned everything needed — and a great deal besides)
