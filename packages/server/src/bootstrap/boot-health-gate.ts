@@ -66,7 +66,7 @@ export async function runHealthGate(deps: JamDeps, mode: GateMode): Promise<Gate
     // Never print the token itself - presence and source only.
     detail: credsOk
       ? `${creds.email} @ ${creds.baseUrl} (${creds.source})`
-      : "set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN (process env or Windows User env)",
+      : "run `jam auth login`, or set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN",
   });
 
   const baseUrlOk = Boolean(creds.baseUrl && /^https?:\/\//.test(creds.baseUrl));

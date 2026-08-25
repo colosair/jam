@@ -67,7 +67,8 @@ export async function setup(options: SetupOptions = {}): Promise<number> {
   if (plan.code === "JAM_AUTH_REQUIRED") {
     line("");
     line("[FAIL] Jira authentication is not configured for this user.");
-    line("       Set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN, then re-run `jam doctor`.");
+    line("       Run `jam auth login`, then re-run `jam doctor`.");
+    line("       Or set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN to override.");
     return 1;
   }
   if (plan.code === "JAM_RUNTIME_CONFIG_MISSING") {
