@@ -5,7 +5,11 @@ import { describe, expect, it } from "vitest";
 import { decideProjectKey, writeBootstrapConfig } from "../../src/bootstrap/project-config-bootstrapper.js";
 import { resolveProjectConfig } from "../../src/bootstrap/project-config-resolver.js";
 import { resolveProjectRoot } from "../../src/bootstrap/project-root-resolver.js";
-import { mergeMcpConfig, JAM_MCP_ENTRY } from "../../src/bootstrap/mcp-config-merger.js";
+import {
+  mergeMcpConfig,
+  isLegacyJamEntry,
+  JAM_MCP_ENTRY,
+} from "../../src/bootstrap/mcp-config-merger.js";
 
 function tmp(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -179,10 +183,38 @@ describe("mergeMcpConfig", () => {
     const raw = readFile(result.path);
 
     expect(raw).not.toContain(root);
-    expect(JSON.parse(raw).mcpServers.jam).toEqual({ command: "jam", args: ["serve"] });
+    // Goes through the launcher, so the file says "this project uses JAM"
+    // without naming any particular install on any particular machine.
+    expect(JSON.parse(raw).mcpServers.jam).toEqual(JAM_MCP_ENTRY);
+  });
+
+  it("pins the launcher to an exact version rather than a floating tag", () => {
+    const spec = JAM_MCP_ENTRY.args.find((a) => a.startsWith("@jam-mcp/launcher@"));
+
+    expect(spec).toBeDefined();
+    expect(spec).toMatch(/@\d+\.\d+\.\d+$/);
+    expect(JSON.stringify(JAM_MCP_ENTRY)).not.toContain("latest");
   });
 });
 
 function readFile(path: string): string {
   return readFileSync(path, "utf8");
 }
+
+describe("legacy jam entries", () => {
+  it("recognises wiring that only works on the machine that wrote it", () => {
+    // A hard-coded checkout path, and a bare `jam` that needs a global install.
+    expect(isLegacyJamEntry({ command: "node", args: ["/abs/path/index.js", "serve"] })).toBe(true);
+    expect(isLegacyJamEntry({ command: "jam", args: ["serve"] })).toBe(true);
+    expect(isLegacyJamEntry({ command: "npx", args: ["--yes", "something-else", "serve"] })).toBe(true);
+  });
+
+  it("does not treat current launcher-based wiring as legacy", () => {
+    expect(isLegacyJamEntry(JAM_MCP_ENTRY)).toBe(false);
+  });
+
+  it("ignores anything that is not an entry object", () => {
+    expect(isLegacyJamEntry(undefined)).toBe(false);
+    expect(isLegacyJamEntry("jam")).toBe(false);
+  });
+});

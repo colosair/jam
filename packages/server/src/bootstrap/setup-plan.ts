@@ -170,7 +170,8 @@ function planMcpChange(state: SetupState, options: PlanOptions): SetupChange | u
   }
   // An existing jam entry is left alone unless migration was asked for
   // explicitly - overwriting someone's customised wiring is not setup's call.
-  if (options.migrate && options.jamEntryIsLegacy) {
+  const legacy = options.jamEntryIsLegacy ?? state.mcp.jamEntryIsLegacy;
+  if (options.migrate && legacy) {
     return { type: "replace", target: "mcp-config", path: state.mcp.path, reason: "migrate" };
   }
   return undefined;

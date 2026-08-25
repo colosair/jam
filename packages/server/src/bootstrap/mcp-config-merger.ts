@@ -1,7 +1,42 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-export const JAM_MCP_ENTRY = { command: "jam", args: ["serve"] } as const;
+import { SERVER_VERSION } from "@jam-mcp/launcher";
+
+/**
+ * The canonical jam entry for a project's `.mcp.json`.
+ *
+ * Goes through the launcher rather than naming a JAM install directly, so the
+ * file says only "this project uses JAM" - which build actually runs is the
+ * reader's own choice, in their own ~/.jam/config.yaml. That is what makes
+ * this line safe to commit and share across machines.
+ *
+ * Pinned to an exact version. A floating tag would silently change what a
+ * teammate's editor launches.
+ */
+export const LAUNCHER_PACKAGE_SPEC = `@jam-mcp/launcher@${SERVER_VERSION}`;
+
+export const JAM_MCP_ENTRY = {
+  command: "npx",
+  args: ["--yes", LAUNCHER_PACKAGE_SPEC, "serve"],
+} as const;
+
+/**
+ * Recognise wiring from before the launcher existed: a hard-coded path to one
+ * machine's checkout, or a bare `jam` that depends on a global PATH install.
+ * Both work only where they were written, which is why `--migrate` exists.
+ */
+export function isLegacyJamEntry(entry: unknown): boolean {
+  if (!entry || typeof entry !== "object") return false;
+  const { command, args } = entry as { command?: unknown; args?: unknown };
+
+  if (command === "jam") return true;
+  if (command === "node") return true;
+  if (command === "npx" && Array.isArray(args)) {
+    return !args.some((arg) => typeof arg === "string" && arg.startsWith("@jam-mcp/launcher@"));
+  }
+  return false;
+}
 
 export type McpMergeResult = {
   path: string;

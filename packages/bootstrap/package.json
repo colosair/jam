@@ -1,0 +1,28 @@
+{
+  "name": "@jam-mcp/bootstrap",
+  "version": "1.0.0",
+  "description": "Zero-install entry point for JAM (Jira Agent MCP) - first-run setup for humans and coding agents",
+  "type": "module",
+  "bin": {
+    "jam-bootstrap": "dist/cli.js"
+  },
+  "main": "dist/cli.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@jam-mcp/server": "1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "license": "UNLICENSED"
+}

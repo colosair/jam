@@ -11,7 +11,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build -w @jam-mcp/launcher && npm run build -w @jam-mcp/server && npm run build -w @jam-mcp/bootstrap",
     "test": "npm run test --workspaces --if-present",
     "pack:all": "node scripts/pack-all.mjs",
     "smoke": "node scripts/tarball-smoke.mjs",

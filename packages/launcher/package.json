@@ -9,9 +9,18 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js",
-    "./runtime-config": "./dist/runtime-config.js",
-    "./runtime-resolver": "./dist/runtime-resolver.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./runtime-config": {
+      "types": "./dist/runtime-config.d.ts",
+      "default": "./dist/runtime-config.js"
+    },
+    "./runtime-resolver": {
+      "types": "./dist/runtime-resolver.d.ts",
+      "default": "./dist/runtime-resolver.js"
+    }
   },
   "engines": {
     "node": ">=20"

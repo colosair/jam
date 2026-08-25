@@ -32,5 +32,15 @@
     "typescript": "^5.9.0",
     "vitest": "^4.1.11"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./cli-entry": {
+      "types": "./dist/cli-entry.d.ts",
+      "default": "./dist/cli-entry.js"
+    }
+  }
 }

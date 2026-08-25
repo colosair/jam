@@ -6,7 +6,7 @@ import {
 import { CompositeCredentialProvider } from "../adapters/credentials/composite.js";
 import { loadConfig } from "../config/load-config.js";
 import type { CredentialPort, CredentialSource } from "../ports/credentials.port.js";
-import { inspectMcpConfig, type McpInspection } from "./mcp-config-merger.js";
+import { inspectMcpConfig, isLegacyJamEntry, type McpInspection } from "./mcp-config-merger.js";
 import { resolveProjectRoot } from "./project-root-resolver.js";
 
 export type RuntimeState = {
@@ -39,7 +39,7 @@ export type SetupState = {
   runtime: RuntimeState;
   credentials: CredentialState;
   project: ProjectState;
-  mcp: McpInspection;
+  mcp: McpInspection & { jamEntryIsLegacy: boolean };
 };
 
 export type DetectOptions = {
@@ -64,7 +64,7 @@ export function detectSetupState(options: DetectOptions = {}): SetupState {
     runtime: detectRuntime(options.home),
     credentials: detectCredentials(options.credentials ?? new CompositeCredentialProvider()),
     project: detectProject(cwd),
-    mcp: inspectMcpConfig(resolveProjectRoot(cwd).root),
+    mcp: detectMcp(resolveProjectRoot(cwd).root),
   };
 }
 
@@ -112,4 +112,10 @@ function detectProject(cwd: string): ProjectState {
       error: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+/** Inspection plus whether the existing jam entry predates launcher-based wiring. */
+function detectMcp(root: string): McpInspection & { jamEntryIsLegacy: boolean } {
+  const inspection = inspectMcpConfig(root);
+  return { ...inspection, jamEntryIsLegacy: isLegacyJamEntry(inspection.jamEntry) };
 }
