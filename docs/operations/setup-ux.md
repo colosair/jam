@@ -153,6 +153,14 @@ Not allowed for: reading a config file, checking whether a path exists, parsing
 a version, merging `.mcp.json`. Spinning through instant local work makes fast
 operations feel slow and trains people to distrust the indicator.
 
+Also not allowed around synchronous work, however slow. The migration target
+probe blocks the process, so a spinner would print one frame and then freeze —
+it gets a pending line instead, and only when a probe actually happens:
+
+```text
+○ Checking @jam-mcp/launcher@1.0.0 on npm...
+```
+
 Disabled entirely when not interactive, where it degrades to a single pending
 line.
 
@@ -173,6 +181,13 @@ No boxes. State the problem, then the comparison or the action:
   The stored credentials were rejected.
 
 › Re-authenticate
+```
+
+```text
+× Migration target is not available from the configured npm registry
+
+  npm could not find @jam-mcp/launcher@1.0.0 in the configured registry.
+  Existing .mcp.json was left unchanged.
 ```
 
 ## Non-TTY, CI and `NO_COLOR`

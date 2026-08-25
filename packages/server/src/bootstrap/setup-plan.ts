@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { CONFIG_RELATIVE_PATH } from "../config/load-config.js";
+import type { MigrationTarget } from "./migration-target.js";
 import { decideProjectKey, type BootstrapSource } from "./project-config-bootstrapper.js";
 import type { SetupState } from "./setup-state.js";
 
@@ -10,7 +11,8 @@ export type SetupCode =
   | "JAM_AUTH_REQUIRED"
   | "JAM_RUNTIME_CONFIG_MISSING"
   | "JAM_PROJECT_CONFIG_INVALID"
-  | "JAM_MCP_CONFIG_UNREADABLE";
+  | "JAM_MCP_CONFIG_UNREADABLE"
+  | "JAM_MIGRATION_TARGET_UNAVAILABLE";
 
 export type SetupChange =
   | {
@@ -31,6 +33,8 @@ export type SetupPlan = {
   requiresUserAction: boolean;
   /** Populated by the caller when status is JAM_PROJECT_SELECTION_REQUIRED. */
   projects?: { key: string; name: string }[];
+  /** Why a requested migration was refused, when status is JAM_MIGRATION_TARGET_UNAVAILABLE. */
+  migrationTarget?: MigrationTarget;
   nextAction?: { type: "authenticate" | "select_project" | "configure_runtime"; command?: string };
   project?: { root: string; key?: string };
 };
@@ -44,6 +48,12 @@ export type PlanOptions = {
   presetsPath?: string;
   /** True when the existing jam entry does not match the current canonical form. */
   jamEntryIsLegacy?: boolean;
+  /**
+   * Whether the package a `--migrate` rewrite would point at can be resolved.
+   * Observed by the caller, like `jamEntryIsLegacy` - the planner never probes.
+   * Absent means not verified, and an unverified target refuses the rewrite.
+   */
+  migrationTarget?: MigrationTarget;
 };
 
 /**
@@ -104,9 +114,24 @@ export function computeSetupPlan(state: SetupState, options: PlanOptions = {}): 
   }
 
   const mcpChange = planMcpChange(state, options);
-  if (mcpChange) changes.push(mcpChange);
-
   const project = { root: state.project.root, key: key.key };
+
+  // A migration replaces wiring the user already has working. Refuse to plan
+  // that against a destination nobody has confirmed is reachable - and answer
+  // the flag they typed before reporting anything else. The rest of the plan
+  // survives: declining the rewrite is no reason to leave the project unwired.
+  if (mcpChange?.type === "replace" && options.migrationTarget?.available !== true) {
+    return {
+      status: "user_action_required",
+      code: "JAM_MIGRATION_TARGET_UNAVAILABLE",
+      changes,
+      requiresUserAction: true,
+      ...(options.migrationTarget ? { migrationTarget: options.migrationTarget } : {}),
+      project,
+    };
+  }
+
+  if (mcpChange) changes.push(mcpChange);
 
   // Credentials are a human boundary: JAM can wire the project up regardless,
   // but it cannot authenticate on the user's behalf. The plan therefore still

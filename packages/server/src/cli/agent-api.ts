@@ -1,7 +1,11 @@
 import { runHealthGate } from "../bootstrap/boot-health-gate.js";
 import { listVisibleProjects } from "../bootstrap/jira-projects.js";
+import {
+  computeSetupPlanWithPreflight,
+  type MigrationTarget,
+} from "../bootstrap/migration-target.js";
 import { applySetupPlan } from "../bootstrap/setup-apply.js";
-import { computeSetupPlan, type SetupPlan } from "../bootstrap/setup-plan.js";
+import { type SetupPlan } from "../bootstrap/setup-plan.js";
 import { detectSetupState, type SetupState } from "../bootstrap/setup-state.js";
 import { buildDeps } from "../deps.js";
 import { toJamError } from "../domain/errors.js";
@@ -29,6 +33,8 @@ export type AgentOptions = {
   credentials?: CredentialPort;
   /** Injected by tests so a plan never depends on the machine's JAM_PROJECT_KEY. */
   env?: NodeJS.ProcessEnv;
+  /** Injected by tests so a plan never shells out to npm to verify a migration target. */
+  migrationTarget?: MigrationTarget;
 };
 
 export function emitJson(payload: unknown): void {
@@ -44,10 +50,11 @@ function detect(options: AgentOptions): SetupState {
 }
 
 function planFrom(state: SetupState, options: AgentOptions): SetupPlan {
-  return computeSetupPlan(state, {
+  return computeSetupPlanWithPreflight(state, {
     ...(options.explicitKey ? { explicitKey: options.explicitKey } : {}),
     ...(options.migrate ? { migrate: options.migrate } : {}),
     ...(options.env ? { env: options.env } : {}),
+    ...(options.migrationTarget ? { migrationTarget: options.migrationTarget } : {}),
   });
 }
 

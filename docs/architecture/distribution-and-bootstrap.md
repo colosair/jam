@@ -140,6 +140,11 @@ verify   the shared health gate
 reason before acting. `apply` re-decides nothing — if a change is not in the
 plan, it does not happen.
 
+Where a decision needs a fact about the world, the caller observes it and hands
+it to `plan` — `jamEntryIsLegacy` and the migration preflight both arrive that
+way. The planner never reaches for the network, a subprocess, or a clock, which
+is what keeps the purity above literally true rather than aspirational.
+
 ### Status codes
 
 | Code | Meaning |
@@ -149,9 +154,22 @@ plan, it does not happen.
 | `JAM_RUNTIME_CONFIG_MISSING` | No runtime chosen on this machine yet |
 | `JAM_PROJECT_CONFIG_INVALID` | `project.yaml` exists but will not parse — refuse, do not overwrite |
 | `JAM_MCP_CONFIG_UNREADABLE` | `.mcp.json` is not valid JSON — refuse, do not overwrite |
+| `JAM_MIGRATION_TARGET_UNAVAILABLE` | `--migrate` was asked for, but the launcher package could not be resolved — `.mcp.json` left unchanged |
 
-Two of these are stops rather than failures: they hold the user's own settings,
-so "fixing" them by overwriting would destroy the thing that needs fixing.
+`JAM_PROJECT_CONFIG_INVALID` and `JAM_MCP_CONFIG_UNREADABLE` are stops rather
+than failures: they hold the user's own settings, so "fixing" them by
+overwriting would destroy the thing that needs fixing.
+
+`JAM_MIGRATION_TARGET_UNAVAILABLE` is that same instinct pointed forward. A
+migration rewrites wiring the user already has working, so it only happens once
+the destination is known to resolve — `npm view` against their own npm
+configuration, so a privately published launcher answers correctly. Anything
+that cannot be verified — offline, blocked proxy, no npm, timeout — refuses the
+rewrite, because every one of those would also break `npx --yes <spec> serve` at
+launch time. The probe is gated on a pending replacement, not on the flag, so
+setup never reaches the registry on a path that rewrites nothing. The rest of
+the plan still applies: declining the rewrite is no reason to leave a project
+unwired.
 
 ### Safe Bootstrap
 
@@ -259,7 +277,8 @@ What each layer is actually held to:
 - **Launcher** — spawn arguments, cwd, `stdio: inherit`, exit code propagation,
   signal forwarding and handler cleanup, spawn failure mapping.
 - **Mutation** — unrelated MCP servers preserved, an existing jam entry left
-  alone, `--migrate` the only path that rewrites it.
+  alone, `--migrate` the only path that rewrites it, and only after its target
+  is confirmed resolvable.
 - **Security** — no credential written project-side, no development path
   written project-side, no PATH or user-environment mutation, no fuzzy project
   inference, no `@latest` in anything executable.

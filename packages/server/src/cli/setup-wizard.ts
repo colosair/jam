@@ -1,6 +1,11 @@
 import { writeRuntimeConfig, type RuntimeMode } from "@jam-mcp/launcher";
 import { runHealthGate } from "../bootstrap/boot-health-gate.js";
 import { listVisibleProjects } from "../bootstrap/jira-projects.js";
+import {
+  checkMigrationTarget,
+  computeSetupPlanWithPreflight,
+} from "../bootstrap/migration-target.js";
+import { LAUNCHER_PACKAGE_SPEC } from "../bootstrap/mcp-config-merger.js";
 import { applySetupPlan } from "../bootstrap/setup-apply.js";
 import { computeSetupPlan, type SetupPlan } from "../bootstrap/setup-plan.js";
 import { detectSetupState, type SetupState } from "../bootstrap/setup-state.js";
@@ -124,11 +129,12 @@ async function runStatusMenu(
       ui.next("Set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN, then run `jam doctor`.");
       return 0;
     case "repair": {
-      const plan = computeSetupPlan(state, planOptions(options));
+      const plan = computeSetupPlanWithPreflight(state, planOptions(options), probe(ui));
       const applied = applySetupPlan(plan);
       ui.line();
       if (applied.changesApplied) ui.success("Project wiring repaired");
       else ui.success("Nothing to repair");
+      if (reportMigrationRefused(ui, plan)) return 1;
       return verify(ui, state.project.root);
     }
     case "exit":
@@ -206,7 +212,7 @@ function reportCredentials(ui: Ui, state: SetupState): void {
 async function wireProject(ui: Ui, state: SetupState, options: WizardOptions): Promise<number> {
   ui.section("Project");
 
-  const plan = computeSetupPlan(state, planOptions(options));
+  const plan = computeSetupPlanWithPreflight(state, planOptions(options), probe(ui));
 
   if (plan.code === "JAM_PROJECT_CONFIG_INVALID" || plan.code === "JAM_MCP_CONFIG_UNREADABLE") {
     ui.failure(
@@ -240,7 +246,31 @@ async function wireProject(ui: Ui, state: SetupState, options: WizardOptions): P
       }
     }
   }
+
+  if (reportMigrationRefused(ui, plan)) return 1;
   return 0;
+}
+
+/**
+ * The registry probe blocks, so it gets a pending line rather than a spinner -
+ * a spinner wrapped around synchronous work prints a frame that never animates.
+ * Building it into the check means the line appears only when a probe actually
+ * happens, never on the paths that skip it.
+ */
+function probe(ui: Ui): () => ReturnType<typeof checkMigrationTarget> {
+  return () => {
+    ui.pending(`Checking ${LAUNCHER_PACKAGE_SPEC} on npm...`);
+    return checkMigrationTarget();
+  };
+}
+
+/** True when a requested migration was refused, so the caller stops here. */
+function reportMigrationRefused(ui: Ui, plan: SetupPlan): boolean {
+  if (plan.code !== "JAM_MIGRATION_TARGET_UNAVAILABLE") return false;
+  ui.failure("Migration target is not available from the configured npm registry");
+  if (plan.migrationTarget?.detail) ui.line(`  ${plan.migrationTarget.detail}`);
+  ui.line("  Existing .mcp.json was left unchanged.");
+  return true;
 }
 
 async function reportSelectionRequired(ui: Ui, state: SetupState): Promise<number> {

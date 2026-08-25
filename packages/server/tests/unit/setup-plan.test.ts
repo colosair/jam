@@ -2,6 +2,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFil
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
+import { LAUNCHER_PACKAGE_SPEC } from "../../src/bootstrap/mcp-config-merger.js";
+import {
+  checkMigrationTarget,
+  computeSetupPlanWithPreflight,
+  type MigrationTarget,
+  type RunResult,
+} from "../../src/bootstrap/migration-target.js";
 import { applySetupPlan } from "../../src/bootstrap/setup-apply.js";
 import { computeSetupPlan } from "../../src/bootstrap/setup-plan.js";
 import { detectSetupState } from "../../src/bootstrap/setup-state.js";
@@ -72,6 +79,28 @@ function snapshot(root: string): Record<string, string> {
 
 function detect(root: string, home: string, credentials: CredentialPort) {
   return detectSetupState({ cwd: root, home, credentials });
+}
+
+/** A .mcp.json whose jam entry only works on the machine that wrote it. */
+function withLegacyJamEntry(root: string): void {
+  writeFileSync(
+    join(root, ".mcp.json"),
+    JSON.stringify({ mcpServers: { jam: { command: "node", args: ["/abs/path"] } } }),
+    "utf8",
+  );
+}
+
+const targetAvailable: MigrationTarget = { spec: LAUNCHER_PACKAGE_SPEC, available: true };
+const targetMissing: MigrationTarget = {
+  spec: LAUNCHER_PACKAGE_SPEC,
+  available: false,
+  reason: "not-found",
+  detail: "npm could not find it.",
+};
+
+/** A probe that fails the test if the preflight reaches for the network at all. */
+function neverProbe(): MigrationTarget {
+  throw new Error("migration target was probed when no replacement was pending");
 }
 
 describe("detectSetupState", () => {
@@ -154,16 +183,16 @@ describe("computeSetupPlan", () => {
   it("leaves an existing jam entry alone unless migration is requested", () => {
     const root = bareProject();
     withProjectConfig(root, "PROJECT");
-    writeFileSync(
-      join(root, ".mcp.json"),
-      JSON.stringify({ mcpServers: { jam: { command: "node", args: ["/abs/path"] } } }),
-      "utf8",
-    );
+    withLegacyJamEntry(root);
 
     const state = detect(root, homeWithRuntime(), configuredCredentials);
     expect(computeSetupPlan(state).changes).toEqual([]);
     expect(
-      computeSetupPlan(state, { migrate: true, jamEntryIsLegacy: true }).changes,
+      computeSetupPlan(state, {
+        migrate: true,
+        jamEntryIsLegacy: true,
+        migrationTarget: targetAvailable,
+      }).changes,
     ).toMatchObject([{ type: "replace", reason: "migrate" }]);
   });
 
@@ -177,6 +206,60 @@ describe("computeSetupPlan", () => {
     expect(plan.requiresUserAction).toBe(true);
     expect(plan.changes.length).toBeGreaterThan(0);
     expect(plan.nextAction).toEqual({ type: "authenticate" });
+  });
+
+  it("refuses a migration when the target cannot be found, and keeps the rest of the plan", () => {
+    const root = bareProject();
+    withLegacyJamEntry(root);
+
+    const plan = computeSetupPlan(detect(root, homeWithRuntime(), configuredCredentials), {
+      explicitKey: "PROJECT",
+      migrate: true,
+      jamEntryIsLegacy: true,
+      migrationTarget: targetMissing,
+    });
+
+    expect(plan.code).toBe("JAM_MIGRATION_TARGET_UNAVAILABLE");
+    expect(plan.requiresUserAction).toBe(true);
+    expect(plan.migrationTarget).toEqual(targetMissing);
+    // The rewrite is dropped; wiring the project is not the thing that failed.
+    expect(plan.changes.some((c) => c.target === "mcp-config")).toBe(false);
+    expect(plan.changes).toMatchObject([{ type: "create", target: "project-config" }]);
+  });
+
+  it("refuses a migration when nobody verified the target at all", () => {
+    const root = bareProject();
+    withProjectConfig(root, "PROJECT");
+    withLegacyJamEntry(root);
+
+    // No migrationTarget: a caller that forgets to check must not get a rewrite.
+    const plan = computeSetupPlan(detect(root, homeWithRuntime(), configuredCredentials), {
+      migrate: true,
+      jamEntryIsLegacy: true,
+    });
+
+    expect(plan.code).toBe("JAM_MIGRATION_TARGET_UNAVAILABLE");
+    expect(plan.changes).toEqual([]);
+  });
+
+  it("refuses a migration whose target is missing, without touching .mcp.json", () => {
+    const root = bareProject();
+    withLegacyJamEntry(root);
+    const before = snapshot(root);
+
+    const plan = computeSetupPlan(detect(root, homeWithRuntime(), configuredCredentials), {
+      explicitKey: "PROJECT",
+      migrate: true,
+      jamEntryIsLegacy: true,
+      migrationTarget: targetMissing,
+    });
+    applySetupPlan(plan);
+
+    const after = snapshot(root);
+    // The safe half of the plan really was applied...
+    expect(existsSync(join(root, ".jira-agent", "project.yaml"))).toBe(true);
+    // ...and the file the migration would have rewritten is byte-identical.
+    expect(after[".mcp.json"]).toBe(before[".mcp.json"]);
   });
 
   it("refuses to touch an unparseable .mcp.json", () => {
@@ -252,5 +335,126 @@ describe("applySetupPlan", () => {
     const written = JSON.stringify(snapshot(root));
     expect(written).not.toContain("SECRET");
     expect(written).not.toMatch(/JIRA_API_TOKEN\s*[":]/);
+  });
+});
+
+describe("computeSetupPlanWithPreflight", () => {
+  const nonCandidates: [string, (root: string) => void][] = [
+    ["there is no .mcp.json to replace", () => {}],
+    [
+      "the .mcp.json has no jam entry",
+      (root) => writeFileSync(join(root, ".mcp.json"), JSON.stringify({ mcpServers: {} }), "utf8"),
+    ],
+    [
+      "the jam entry is already canonical",
+      (root) =>
+        writeFileSync(
+          join(root, ".mcp.json"),
+          JSON.stringify({
+            mcpServers: { jam: { command: "npx", args: ["--yes", LAUNCHER_PACKAGE_SPEC, "serve"] } },
+          }),
+          "utf8",
+        ),
+    ],
+  ];
+
+  for (const [why, arrange] of nonCandidates) {
+    it(`does not probe the registry when ${why}`, () => {
+      const root = bareProject();
+      withProjectConfig(root, "PROJECT");
+      arrange(root);
+
+      const plan = computeSetupPlanWithPreflight(
+        detect(root, homeWithRuntime(), configuredCredentials),
+        { migrate: true, env: {} },
+        neverProbe,
+      );
+
+      expect(plan.code).not.toBe("JAM_MIGRATION_TARGET_UNAVAILABLE");
+    });
+  }
+
+  it("does not probe the registry when the plan stops before wiring", () => {
+    const root = bareProject();
+    withLegacyJamEntry(root);
+
+    const plan = computeSetupPlanWithPreflight(
+      detect(root, homeWithRuntime(), configuredCredentials),
+      { migrate: true, env: {} },
+      neverProbe,
+    );
+
+    expect(plan.code).toBe("JAM_PROJECT_SELECTION_REQUIRED");
+  });
+
+  it("probes once when a replacement is pending, and plans it when the target is there", () => {
+    const root = bareProject();
+    withProjectConfig(root, "PROJECT");
+    withLegacyJamEntry(root);
+
+    let probes = 0;
+    const plan = computeSetupPlanWithPreflight(
+      detect(root, homeWithRuntime(), configuredCredentials),
+      { migrate: true, env: {} },
+      () => {
+        probes += 1;
+        return targetAvailable;
+      },
+    );
+
+    expect(probes).toBe(1);
+    expect(plan.changes).toMatchObject([{ type: "replace", reason: "migrate" }]);
+  });
+
+  it("prefers an injected target over probing", () => {
+    const root = bareProject();
+    withProjectConfig(root, "PROJECT");
+    withLegacyJamEntry(root);
+
+    const plan = computeSetupPlanWithPreflight(
+      detect(root, homeWithRuntime(), configuredCredentials),
+      { migrate: true, env: {}, migrationTarget: targetMissing },
+      neverProbe,
+    );
+
+    expect(plan.code).toBe("JAM_MIGRATION_TARGET_UNAVAILABLE");
+  });
+});
+
+describe("checkMigrationTarget", () => {
+  const run = (result: Partial<RunResult>) => () => ({ status: 1, stderr: "", ...result });
+
+  it("accepts a spec npm can resolve", () => {
+    expect(checkMigrationTarget("pkg@1.0.0", run({ status: 0 }))).toEqual({
+      spec: "pkg@1.0.0",
+      available: true,
+    });
+  });
+
+  it("reports a spec the registry does not have as not-found", () => {
+    const target = checkMigrationTarget("pkg@1.0.0", run({ stderr: "npm error code E404\n" }));
+
+    expect(target).toMatchObject({ available: false, reason: "not-found" });
+  });
+
+  it("treats a timeout as unverified rather than missing", () => {
+    const error = Object.assign(new Error("timed out"), { code: "ETIMEDOUT" });
+    const target = checkMigrationTarget("pkg@1.0.0", run({ status: null, error }));
+
+    expect(target).toMatchObject({ available: false, reason: "unverifiable" });
+    expect(target.detail).toContain("ETIMEDOUT");
+  });
+
+  it("treats a missing npm as unverified rather than missing", () => {
+    const error = Object.assign(new Error("spawn npm ENOENT"), { code: "ENOENT" });
+    const target = checkMigrationTarget("pkg@1.0.0", run({ status: null, error }));
+
+    expect(target).toMatchObject({ available: false, reason: "unverifiable" });
+  });
+
+  it("treats an unreachable registry as unverified rather than missing", () => {
+    const target = checkMigrationTarget("pkg@1.0.0", run({ stderr: "npm error code ENOTFOUND\n" }));
+
+    expect(target).toMatchObject({ available: false, reason: "unverifiable" });
   });
 });

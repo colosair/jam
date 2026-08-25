@@ -3,8 +3,9 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { runHealthGate } from "../bootstrap/boot-health-gate.js";
 import { listVisibleProjects } from "../bootstrap/jira-projects.js";
+import { computeSetupPlanWithPreflight } from "../bootstrap/migration-target.js";
 import { applySetupPlan } from "../bootstrap/setup-apply.js";
-import { computeSetupPlan, type SetupPlan } from "../bootstrap/setup-plan.js";
+import { type SetupPlan } from "../bootstrap/setup-plan.js";
 import { detectSetupState } from "../bootstrap/setup-state.js";
 import { toJamError } from "../domain/errors.js";
 import { buildDeps } from "../deps.js";
@@ -37,7 +38,7 @@ export async function setup(options: SetupOptions = {}): Promise<number> {
   }
 
   const state = detectSetupState({ cwd, ...(options.home ? { home: options.home } : {}) });
-  const plan = computeSetupPlan(state, {
+  const plan = computeSetupPlanWithPreflight(state, {
     ...(options.explicitKey ? { explicitKey: options.explicitKey } : {}),
     ...(options.migrate ? { migrate: options.migrate } : {}),
   });
@@ -51,6 +52,17 @@ export async function setup(options: SetupOptions = {}): Promise<number> {
   }
 
   reportApplied(applySetupPlan(plan).applied, plan);
+
+  // The rewrite the user asked for is the thing that failed, so it is reported
+  // before anything else - and reported as a stop, not a warning: continuing to
+  // the health gate would imply the migration happened.
+  if (plan.code === "JAM_MIGRATION_TARGET_UNAVAILABLE") {
+    line("");
+    line("[FAIL] Migration target is not available from the configured npm registry.");
+    line(`       ${plan.migrationTarget?.detail ?? "The target could not be verified."}`);
+    line("       Existing .mcp.json was left unchanged.");
+    return 1;
+  }
 
   if (plan.code === "JAM_AUTH_REQUIRED") {
     line("");

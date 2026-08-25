@@ -106,7 +106,8 @@ Finish with `jam doctor --json`.
 jam serve                    Run the MCP server over stdio (what Claude Code / Codex launch)
 jam doctor                   Diagnose config, credentials and Jira connectivity
 jam setup [--project KEY] [--migrate]
-                             Wire up this project and verify
+                             Wire up this project and verify (--migrate rewrites a
+                             legacy jam entry, only if its target resolves)
 jam runtime                  Show which JAM build this machine runs
 jam runtime use package | development <path>
                              Change it (writes ~/.jam/config.yaml only, never a project)
@@ -146,7 +147,9 @@ and is safe to commit:
 ```
 
 Existing entries for other MCP servers are always preserved. An existing `jam`
-entry is left alone unless you pass `--migrate`.
+entry is left alone unless you pass `--migrate` — and `--migrate` first checks
+that the package it would point at actually resolves. If it cannot be verified,
+the migration is refused and your `.mcp.json` is left exactly as it was.
 
 `.jira-agent/project.yaml` — project policy only, never credentials. See
 [`.jira-agent/project.yaml.example`](.jira-agent/project.yaml.example); the
