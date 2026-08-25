@@ -10,7 +10,9 @@ Use for final judgements: was this agreed, is the contract settled, was it appro
 
 Returns everything jira_context returns plus description and every comment (normalized to plain text). This is the most expensive tool - prefer jira_search for listing and jira_context for readiness, and reach for this one when the answer must not be wrong.
 
-Ask for as few keys as possible: with several issues at once the output budget may drop the oldest comments. Always check meta.commentsComplete and meta.complete - if either is false, the thread you are reading is partial and a "yes, it is agreed" answer is not supported.`;
+Ask for as few keys as possible: with several issues at once the output budget may drop the oldest comments. Always check meta.commentsComplete and meta.complete - if either is false, the thread you are reading is partial and a "yes, it is agreed" answer is not supported.
+
+Absence of evidence in Jira is not evidence of absence. A complete read with no supporting comments proves only what Jira holds. If the issue references an external canonical source (an MR/PR, a spec or contract document, Confluence, another issue), do not conclude "not agreed", "not approved" or "cannot start": check that source if you can reach it, and otherwise report that Jira alone cannot settle the question and name the source that must be checked. Issues that reference no external source do not warrant an open-ended search.`;
 
 export function registerJiraFull(server: McpServer, deps: JamDeps): void {
   server.registerTool(

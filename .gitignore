@@ -16,6 +16,10 @@ dist/
 logs/
 *.log
 
+# un-redacted local material: raw benchmark output, scratch analysis.
+# Anything here may contain identifiers or credentials and must never be committed.
+private/
+
 # editors / OS
 .DS_Store
 .idea/

@@ -178,7 +178,18 @@ For Jira reads, use the JAM tools.
 Do not use raw Atlassian Jira search when JAM can answer the request.
 A search result is not complete issue context.
 If meta.complete is false, say so instead of answering as if it were.
+
+Absence of evidence in Jira is not evidence of absence. If an issue has no
+supporting comments but references an external canonical source (an MR/PR,
+a spec, a contract doc, Confluence), do not conclude "not agreed" or "cannot
+start" — check that source, or report that Jira alone cannot settle it.
 ```
+
+That last rule comes from a real miss: a complete `jira_full` read with zero
+comments is a complete read *of Jira*, which is not the same as a complete
+record of the decision. This repo's own
+[`CLAUDE.md`](CLAUDE.md#absence-of-evidence-is-not-evidence-of-absence) carries
+the longer version with a worked example.
 
 JAM does not replace the Atlassian MCP. That one keeps Confluence, writes, and
 anything JAM does not cover; JAM becomes the default path for Jira **reads**.
