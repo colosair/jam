@@ -20,6 +20,11 @@ logs/
 # Anything here may contain identifiers or credentials and must never be committed.
 private/
 
+# This repo's own dogfooding config names a real Jira project. The tracked
+# template is .jira-agent/project.yaml.example; project repos SHOULD commit
+# their own project.yaml. Note this ignores the one file, not .jira-agent/.
+.jira-agent/project.yaml
+
 # editors / OS
 .DS_Store
 .idea/

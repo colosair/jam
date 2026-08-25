@@ -22,7 +22,7 @@ const line = (text: string) => process.stdout.write(`${text}\n`);
  * `jam setup`: the one command a teammate should ever need to run by hand.
  *
  * Inside the jira-agent-mcp checkout it also installs and builds; anywhere
- * else (a project repo like target-project) it goes straight to project wiring:
+ * else (any project repo) it goes straight to project wiring:
  * decide the Jira project key from an explicit source, write
  * `.jira-agent/project.yaml`, merge a PATH-based JAM entry into `.mcp.json`,
  * then run the full diagnostic gate.

@@ -886,7 +886,7 @@ jira-agent-mcp/
 
 ## 11.2 각 프로젝트 레포
 
-예: target-project
+예: 프로젝트 레포 (target-project)
 
 ```text
 target-project/

@@ -28,7 +28,7 @@ Two rules make this work:
 
 ```json
 {
-  "issues": [{ "key": "PROJECT-237", "summary": "Example", "status": "해야 할 일" }],
+  "issues": [{ "key": "PROJECT-101", "summary": "Example issue", "status": "To Do" }],
   "meta": { "level": "search", "complete": true, "pagesFetched": 1, "fetchedAt": "..." }
 }
 ```
@@ -48,7 +48,7 @@ other user environment variables on its own.
 Set credentials (never commit them — `.env` is gitignored):
 
 ```bash
-export JIRA_BASE_URL=https://example.atlassian.net
+export JIRA_BASE_URL=https://your-site.atlassian.net
 export JIRA_EMAIL=you@example.com
 export JIRA_API_TOKEN=...   # https://id.atlassian.com/manage-profile/security/api-tokens
 ```
@@ -70,7 +70,7 @@ line shows which source actually supplied it (`process` / `user-env` /
 
 ## Bring up a project
 
-From the **project** repo (e.g. target-project), not this checkout:
+From the **project** repo you want JAM wired into, not this checkout:
 
 ```bash
 jam setup --project PROJECT
@@ -108,12 +108,12 @@ problem, or a local setup problem? It's read-only: it never writes
 [OK]   Node runtime - v20.11.0
 [OK]   Project config - .jira-agent/project.yaml (project=PROJECT)
 [OK]   Jira project key - PROJECT
-[OK]   Credentials present - you@example.com @ https://example.atlassian.net (user-env)
-[OK]   Jira base URL - https://example.atlassian.net
+[OK]   Credentials present - you@example.com @ https://your-site.atlassian.net (user-env)
+[OK]   Jira base URL - https://your-site.atlassian.net
 [OK]   MCP server startup - 3 tools registered
 [OK]   Jira authentication - Your Name
-[OK]   JQL search / PROJECT access - reachable (sample PROJECT-237)
-[OK]   Issue detail endpoint - read PROJECT-237
+[OK]   JQL search / PROJECT access - reachable (sample PROJECT-101)
+[OK]   Issue detail endpoint - read PROJECT-101
 ```
 
 ## Health checks
@@ -154,14 +154,14 @@ jam setup [--project KEY]    Wire up this project (project.yaml, .mcp.json) and 
 Credentials are never written here — `jam serve` resolves them itself
 (process env, then Windows User env) at startup.
 
-`.jira-agent/project.yaml` — project policy only, never credentials. See this
-repo's [`.jira-agent/project.yaml`](.jira-agent/project.yaml) for the annotated
-version; the minimum, and what `jam setup` generates, is:
+`.jira-agent/project.yaml` — project policy only, never credentials. See
+[`.jira-agent/project.yaml.example`](.jira-agent/project.yaml.example) for the
+annotated version; the minimum, and what `jam setup` generates, is:
 
 ```yaml
 version: 1
 project:
-  key: PROJECT   # target-project - the Jira key is the cohort code
+  key: PROJECT   # your Jira project key, e.g. ABC
 ```
 
 `CLAUDE.md` / `AGENTS.md` — keep it short; the tool descriptions carry the detail:

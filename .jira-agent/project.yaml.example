@@ -1,0 +1,17 @@
+# JAM project policy. Copy to project.yaml and set your Jira project key.
+# Credentials never go in this file - they come from the environment.
+version: 1
+
+project:
+  key: PROJECT
+
+# Everything below is optional; omitted keys fall back to JAM's built-in
+# defaults. The annotated reference is in the README's configuration table.
+#
+# search:
+#   pageSize: 50    # page size sent to Jira, not a cap on total results
+#   maxPages: 20    # safety stop for scope="complete"; hitting it is reported
+#
+# customFields:     # surfaced at CONTEXT level and up
+#   - id: customfield_10011
+#     name: Sprint
