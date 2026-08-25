@@ -33,19 +33,26 @@ Two rules make this work:
 }
 ```
 
-## Install
+## Setup
+
+JAM is not published to npm yet. The package layout builds and passes isolated
+tarball smoke tests, but the `npx` paths below become live only after
+publication — until then, use the development route in
+[Development](#development).
+
+**For a person**, once per machine:
 
 ```bash
-npm ci && npm run build && npm link
+npx --yes @jam-mcp/bootstrap@1.0.0 init
 ```
 
-`npm link` puts `jam` on PATH so `.mcp.json` entries can say `"command":
-"jam"` instead of an absolute path to this checkout - required once per
-machine. If `npm link`'s target directory (`npm config get prefix`) isn't
-already on your PATH, add it once yourself; JAM never touches your PATH or
-other user environment variables on its own.
+Choose whether you're *using* JAM (runs the published package) or *developing*
+it (runs your local checkout), authenticate to Jira once, and you're done. From
+then on it's just `claude` or `codex` inside any wired project.
 
-Set credentials (never commit them — `.env` is gitignored):
+**For a coding agent** — see [Setup with a coding agent](#setup-with-a-coding-agent).
+
+Credentials come from your environment (never a repo):
 
 ```bash
 export JIRA_BASE_URL=https://your-site.atlassian.net
@@ -53,115 +60,102 @@ export JIRA_EMAIL=you@example.com
 export JIRA_API_TOKEN=...   # https://id.atlassian.com/manage-profile/security/api-tokens
 ```
 
-On Windows, a value set with `setx` (System Properties → Environment
-Variables) doesn't appear in `process.env` until a new shell — JAM works
-around exactly that gap: if a credential is missing from the current
-process's environment, it falls back to the Windows **User** environment
-(`HKCU\Environment`) before giving up. `jam doctor`'s "Credentials present"
-line shows which source actually supplied it (`process` / `user-env` /
-`mixed`).
+On Windows a value set with `setx` doesn't reach `process.env` until a new
+shell, so JAM falls back to the Windows **User** environment
+(`HKCU\Environment`). `jam doctor` shows which source supplied it
+(`process` / `user-env` / `mixed`).
 
-`scripts/setup.ps1` does the version check, install and build in one shot;
-`jam setup` (below) is what wires up an actual project.
+## Setup with a coding agent
 
-```powershell
-./scripts/setup.ps1
-```
-
-## Bring up a project
-
-From the **project** repo you want JAM wired into, not this checkout:
+If you are Claude Code, Codex, or another terminal-capable coding agent asked
+to set JAM up in a project, **use the official path** rather than working out
+an installation from this README:
 
 ```bash
-jam setup --project PROJECT
+npx --yes @jam-mcp/bootstrap@1.0.0 setup --agent
 ```
 
-This:
-
-1. Confirms `jam` is reachable on PATH (warns if not).
-2. Writes `.jira-agent/project.yaml` with `project.key: PROJECT` — but
-   only because `--project` said so explicitly. With no existing config and
-   no `--project`, no `JAM_PROJECT_KEY` env var, and no matching entry in
-   `~/.jira-agent/presets.yaml`, JAM refuses to guess and instead lists the
-   Jira projects your account can see, so you can re-run with the right key.
-3. Merges a PATH-based `jam` entry into `.mcp.json`, creating the file if
-   needed and leaving every other MCP server (and any existing `jam` entry)
-   untouched.
-4. Runs the full diagnostic gate (below).
-
-After that, everyday use is just `claude` — `jam serve` bootstraps
-`.jira-agent/project.yaml` on its own once a decidable source exists (an
-existing file, `JAM_PROJECT_KEY`, or a preset), and never re-runs the live
-Jira checks on every startup (see Health checks below).
-
-## Verify
+or, to inspect before acting:
 
 ```bash
-node packages/server/dist/index.js doctor
+jam setup plan --json                       # what would change; changes nothing
+jam setup apply --non-interactive --json    # execute it
+jam doctor --json                           # verify
+```
+
+Each returns a single JSON document on stdout with a stable status code. Branch
+on the code; never parse prose.
+
+Do **not**:
+
+- copy JAM source into the project
+- use `npm link` for consumer setup
+- modify global `PATH` or user environment variables
+- write Jira credentials into any repository file
+- guess a Jira project key from a repo or directory name
+- overwrite or remove unrelated `.mcp.json` entries
+- assemble `project.yaml` or `.mcp.json` yourself
+
+Stop only where a person is genuinely required — `JAM_PROJECT_SELECTION_REQUIRED`
+(ask which Jira project) and `JAM_AUTH_REQUIRED` (ask them to authenticate).
+Finish with `jam doctor --json`.
+
+## Commands
+
+```text
+jam serve                    Run the MCP server over stdio (what Claude Code / Codex launch)
+jam doctor                   Diagnose config, credentials and Jira connectivity
+jam setup [--project KEY] [--migrate]
+                             Wire up this project and verify
+jam runtime                  Show which JAM build this machine runs
+jam runtime use package | development <path>
+                             Change it (writes ~/.jam/config.yaml only, never a project)
+jam auth status              Whether Jira credentials are configured
 ```
 
 `jam doctor` answers one question fast — is this a Jira problem, a credential
-problem, or a local setup problem? It's read-only: it never writes
-`project.yaml` or `.mcp.json` (that's `jam setup`'s job).
+problem, or a local setup problem?
 
 ```text
 [OK]   Node runtime - v20.11.0
 [OK]   Project config - .jira-agent/project.yaml (project=PROJECT)
 [OK]   Jira project key - PROJECT
 [OK]   Credentials present - you@example.com @ https://your-site.atlassian.net (user-env)
-[OK]   Jira base URL - https://your-site.atlassian.net
 [OK]   MCP server startup - 3 tools registered
 [OK]   Jira authentication - Your Name
 [OK]   JQL search / PROJECT access - reachable (sample PROJECT-101)
-[OK]   Issue detail endpoint - read PROJECT-101
 ```
 
-## Health checks
+`jam serve` runs local checks only before starting, so Jira's latency never
+delays your editor's startup; `jam doctor` and `jam setup` add the live
+connectivity checks.
 
-One check core (`runHealthGate`) backs both commands, at two depths:
+## What gets written
 
-- **boot** — `jam serve` runs this on every startup: Node version, config,
-  project key, credential presence, base URL shape, MCP wiring. All local, no
-  network call, so it never adds Jira's latency to Claude Code's own startup.
-  A failed boot check means the MCP server never calls `connect()` — no
-  half-started server.
-- **full** — `jam doctor` and `jam setup` add live Jira connectivity: auth,
-  a sample JQL search against the configured project, and a sample issue
-  read.
+`jam setup` produces two files in the project, and nothing else:
 
-## Commands
-
-```text
-jam serve                    Run the MCP server over stdio (default; what Claude Code / Codex launch)
-jam doctor                   Diagnose config, credentials and Jira connectivity (read-only, full checks)
-jam setup [--project KEY]    Wire up this project (project.yaml, .mcp.json) and run doctor
-```
-
-## Wire it into a project
-
-`jam setup` (above) does this for you. What it produces:
-
-`.mcp.json` — PATH-based, so it's safe to commit and share across machines:
+`.mcp.json` — goes through the launcher, so it names no machine-specific path
+and is safe to commit:
 
 ```json
 {
   "mcpServers": {
-    "jam": { "command": "jam", "args": ["serve"] }
+    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.0.0", "serve"] }
   }
 }
 ```
 
-Credentials are never written here — `jam serve` resolves them itself
-(process env, then Windows User env) at startup.
+Existing entries for other MCP servers are always preserved. An existing `jam`
+entry is left alone unless you pass `--migrate`.
 
 `.jira-agent/project.yaml` — project policy only, never credentials. See
-[`.jira-agent/project.yaml.example`](.jira-agent/project.yaml.example) for the
-annotated version; the minimum, and what `jam setup` generates, is:
+[`.jira-agent/project.yaml.example`](.jira-agent/project.yaml.example); the
+minimum is:
 
 ```yaml
 version: 1
 project:
-  key: PROJECT   # your Jira project key, e.g. ABC
+  key: PROJECT
 ```
 
 `CLAUDE.md` / `AGENTS.md` — keep it short; the tool descriptions carry the detail:
@@ -194,20 +188,17 @@ the longer version with a worked example.
 JAM does not replace the Atlassian MCP. That one keeps Confluence, writes, and
 anything JAM does not cover; JAM becomes the default path for Jira **reads**.
 
-### Presets, for setting up several projects without typing `--project` each time
+## Design documents
 
-`~/.jira-agent/presets.yaml` (not part of any project repo):
-
-```yaml
-projects:
-  - match: 'C:\projects\target-project'   # absolute path to the project root
-    key: PROJECT
-```
-
-`jam setup` / `jam serve` check this only when a project has no
-`project.yaml` yet and no `--project`/`JAM_PROJECT_KEY` was given — matched by
-exact path (case-insensitive on Windows). JAM never infers a key from a repo
-or folder name; a preset is still an explicit source, just a reusable one.
+| Document | Covers |
+|---|---|
+| [Distribution and bootstrap](docs/architecture/distribution-and-bootstrap.md) | Package/development runtimes, the launcher, plan/apply, version policy, roadmap |
+| [ADR: unified runtime and agent setup](docs/decisions/adr-unified-runtime-and-agent-setup.md) | Why setup branches early and converges, and what that cost |
+| [Setup UX contract](docs/operations/setup-ux.md) | CLI symbols, colour, prompts, `NO_COLOR`/non-TTY, JSON output rules |
+| [JAM design of record](docs/architecture/jira-agent-mcp-design.md) | The three-tool contract and read policy |
+| [ADR: Jira read optimization](docs/decisions/adr-jam-jira-read-optimization.md) | Why reads are mediated at all |
+| [Benchmark: jira-read-v1](docs/benchmarks/jira-read-v1/README.md) | Measured payload and latency evidence |
+| [Architecture backlog](docs/architecture/backlog.md) | Deferred work, with reasons |
 
 ## Configuration reference
 
@@ -228,9 +219,26 @@ whitelist is the point of the tool.
 
 ## Development
 
+An npm workspaces monorepo:
+
+```text
+packages/server      @jam-mcp/server      CLI, setup core, MCP tools  (bin: jam)
+packages/launcher    @jam-mcp/launcher    which JAM build runs        (bin: jam-launcher)
+packages/bootstrap   @jam-mcp/bootstrap   zero-install first run      (bin: jam-bootstrap)
+```
+
 ```bash
+npm ci
+npm run build            # all three, in dependency order
 npm test                 # unit + contract tests
-npm run build            # tsc
+npm run pack:all         # tarballs into private/packs
+npm run smoke            # install those tarballs into isolated sandboxes
+```
+
+To use your checkout instead of the published package, from anywhere:
+
+```bash
+node packages/server/dist/index.js runtime use development /path/to/this/checkout
 ```
 
 Live Jira tests are opt-in:
@@ -239,10 +247,10 @@ Live Jira tests are opt-in:
 JAM_INTEGRATION=1 npm test
 ```
 
-Layout follows ports & adapters — `src/domain`, `src/policy`, `src/ports`,
-`src/adapters`, `src/application`, `src/mcp`. The full design, including the
-phases that are deliberately deferred (cache, remote transport, Rovo, OAuth),
-is in [`docs/architecture/jira-agent-mcp-design.md`](docs/architecture/jira-agent-mcp-design.md).
+Inside `packages/server`, layout follows ports & adapters — `src/domain`,
+`src/policy`, `src/ports`, `src/adapters`, `src/application`, `src/mcp`, with
+`src/bootstrap` holding the detect/plan/apply setup core. See the
+[design documents](#design-documents) above.
 
 ## Security
 

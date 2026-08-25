@@ -48,11 +48,38 @@ record, so Jira alone cannot settle whether this is ready to start — that docu
 needs to be checked.
 ```
 
+## Installing JAM into another project
+
+If asked to set JAM up somewhere, use the official setup path — do not work out
+an installation procedure from the README:
+
+```bash
+jam setup plan --json                       # what would change; changes nothing
+jam setup apply --non-interactive --json    # execute it
+jam doctor --json                           # verify
+```
+
+`npx --yes @jam-mcp/bootstrap@1.0.0 setup --agent` does all three in one shot
+when nothing is installed yet. Each returns a single JSON document with a
+stable status code — branch on the code, never on prose.
+
+Never: copy JAM source into the project, `npm link` for consumer setup, modify
+`PATH` or user environment variables, write credentials into a repository file,
+guess a Jira project key, overwrite unrelated `.mcp.json` entries, or assemble
+`project.yaml` / `.mcp.json` by hand.
+
+Stop only for `JAM_PROJECT_SELECTION_REQUIRED` (ask which Jira project) and
+`JAM_AUTH_REQUIRED` (ask the user to authenticate). Finish with
+`jam doctor --json`.
+
 ## This repo
 
-TypeScript, ESM, Node 20+. Ports & adapters: `src/domain` → `src/policy` →
-`src/ports` → `src/adapters`, with `src/application` orchestrating and `src/mcp`
-exposing the tools.
+TypeScript, ESM, Node 20+. npm workspaces monorepo: `packages/server`
+(CLI, setup core, MCP tools), `packages/launcher` (which JAM build runs),
+`packages/bootstrap` (zero-install entry). Inside the server, ports & adapters:
+`src/domain` → `src/policy` → `src/ports` → `src/adapters`, with
+`src/application` orchestrating, `src/bootstrap` holding detect/plan/apply, and
+`src/mcp` exposing the tools.
 
 - The external contract is exactly three tools. Adding or renaming one is a
   breaking change; internal refactors must not touch it.
@@ -61,11 +88,16 @@ exposing the tools.
 - Silent truncation is a release blocker. Anything dropped must show up in
   `CompletenessMeta`.
 - `stdout` belongs to the MCP protocol — diagnostics go to `stderr`.
+- Setup decides in `setup-plan.ts` and writes in `setup-apply.ts`. Planning
+  must never mutate; applying must never re-decide.
+- Human and agent entry points share that core. No parallel implementation.
+- Package versions are pinned exactly - no `@latest`, no major alias.
 
 ```bash
-npm test
 npm run build
-node dist/index.js doctor
+npm test
+node packages/server/dist/index.js doctor
 ```
 
-Design of record: `docs/architecture/jira-agent-mcp-design.md`.
+Design of record: `docs/architecture/jira-agent-mcp-design.md` and
+`docs/architecture/distribution-and-bootstrap.md`.
