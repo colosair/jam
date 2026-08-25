@@ -141,13 +141,13 @@ describe("jam auth login", () => {
 
     const run = authLoginCommand({ ui, store, verify: accepts, readBack: () => port(storedOnly) });
     await answer(input, [
-      "https://your-site.atlassian.net/jira/software/c/projects/PROJECT/summary",
+      "https://example.atlassian.net/jira/software/c/projects/EXAMPLE/summary",
       EMAIL,
       SECRET,
     ]);
 
     expect(await run).toBe(0);
-    expect(store.held?.baseUrl).toBe("https://your-site.atlassian.net");
+    expect(store.held?.baseUrl).toBe("https://example.atlassian.net");
   });
 
   it("rejects a URL it cannot parse, before asking for anything else", async () => {
@@ -295,16 +295,16 @@ describe("jam auth logout", () => {
 
 describe("toJiraOrigin", () => {
   const cases: [string, string | undefined][] = [
-    ["https://your-site.atlassian.net", "https://your-site.atlassian.net"],
-    ["https://your-site.atlassian.net/", "https://your-site.atlassian.net"],
-    ["  https://your-site.atlassian.net///  ", "https://your-site.atlassian.net"],
+    ["https://example.atlassian.net", "https://example.atlassian.net"],
+    ["https://example.atlassian.net/", "https://example.atlassian.net"],
+    ["  https://example.atlassian.net///  ", "https://example.atlassian.net"],
     [
-      "https://your-site.atlassian.net/jira/software/c/projects/PROJECT/summary",
-      "https://your-site.atlassian.net",
+      "https://example.atlassian.net/jira/software/c/projects/EXAMPLE/summary",
+      "https://example.atlassian.net",
     ],
-    ["https://your-site.atlassian.net/browse/PROJECT-234?foo=1#x", "https://your-site.atlassian.net"],
+    ["https://example.atlassian.net/browse/EXAMPLE-234?foo=1#x", "https://example.atlassian.net"],
     ["http://localhost:8080/jira/x", "http://localhost:8080"],
-    ["your-site.atlassian.net", undefined],
+    ["example.atlassian.net", undefined],
     ["", undefined],
     ["file:///etc/passwd", undefined],
     ["javascript:alert(1)", undefined],
