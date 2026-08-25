@@ -1,7 +1,7 @@
 import { NoopCache } from "./adapters/cache/noop-cache.js";
-import { EnvCredentials } from "./adapters/credentials/env-credentials.js";
+import { CompositeCredentialProvider } from "./adapters/credentials/composite.js";
 import { ConsoleTelemetry } from "./adapters/telemetry/console-telemetry.js";
-import { loadConfig } from "./config/load-config.js";
+import { resolveProjectConfig } from "./bootstrap/project-config-resolver.js";
 import type { ProjectConfig } from "./config/schema.js";
 import type { CachePort } from "./ports/cache.port.js";
 import type { CredentialPort } from "./ports/credentials.port.js";
@@ -22,28 +22,46 @@ export type BuildDepsOptions = {
   cwd?: string;
   /** Injected by tests to bypass the real REST adapter. */
   jira?: JiraReadPort;
+  /** Injected by tests to bypass the real process/registry credential lookup. */
+  credentials?: CredentialPort;
+  /**
+   * Attempt safe project.yaml bootstrap when none exists. `jam serve` and
+   * `jam setup` pass true; `jam doctor` leaves this false, since doctor only
+   * reports on what already exists and never writes.
+   */
+  bootstrap?: boolean;
+  /** `--project` override, passed through from `jam setup`. */
+  explicitKey?: string;
 };
 
 /**
- * Single composition root. `jam serve` and `jam doctor` wire the same way so a
- * doctor pass actually proves the server's configuration.
+ * Single composition root. `jam serve`, `jam doctor` and `jam setup` all wire
+ * through here, so a doctor pass actually proves the server's configuration.
+ *
+ * Credentials come from `CompositeCredentialProvider`: the current process's
+ * own environment first, then the Windows User environment as a fallback for
+ * shells that predate a `setx`.
  */
 export async function buildDeps(options: BuildDepsOptions = {}): Promise<JamDeps> {
-  const { config, path } = loadConfig(options.cwd);
-  const credentials = new EnvCredentials();
-  const telemetry = new ConsoleTelemetry(config.telemetry.enabled);
+  const resolved = resolveProjectConfig({
+    cwd: options.cwd,
+    bootstrap: options.bootstrap ?? false,
+    explicitKey: options.explicitKey,
+  });
+  const credentials = options.credentials ?? new CompositeCredentialProvider();
+  const telemetry = new ConsoleTelemetry(resolved.config.telemetry.enabled);
 
   let jira = options.jira;
   if (!jira) {
     const { JiraCloudReadAdapter } = await import(
       "./adapters/jira-cloud/jira-read.adapter.js"
     );
-    jira = new JiraCloudReadAdapter(credentials, config);
+    jira = new JiraCloudReadAdapter(credentials, resolved.config);
   }
 
   return {
-    config,
-    configPath: path,
+    config: resolved.config,
+    configPath: resolved.configPath,
     jira,
     cache: new NoopCache(),
     telemetry,

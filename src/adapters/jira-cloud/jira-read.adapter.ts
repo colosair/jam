@@ -7,6 +7,7 @@ import type {
   GetIssuesRequest,
   GetIssuesResult,
   JiraReadPort,
+  ListProjectsResult,
   SearchPageRequest,
   SearchPageResult,
 } from "../../ports/jira-read.port.js";
@@ -100,6 +101,20 @@ export class JiraCloudReadAdapter implements JiraReadPort {
       startAt: data.startAt ?? req.startAt,
       total: data.total ?? 0,
       responseBytes: bytes,
+    };
+  }
+
+  async listProjects(): Promise<ListProjectsResult> {
+    const { data } = await this.client.request<{
+      isLast?: boolean;
+      values?: { key?: string; name?: string }[];
+    }>({ path: "rest/api/3/project/search", query: { maxResults: 50 } });
+
+    return {
+      projects: (data.values ?? [])
+        .filter((p): p is { key: string; name: string } => Boolean(p.key && p.name))
+        .map((p) => ({ key: p.key, name: p.name })),
+      truncated: data.isLast === false,
     };
   }
 

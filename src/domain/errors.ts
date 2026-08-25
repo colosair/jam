@@ -15,6 +15,7 @@ export const JAM_ERROR_CODES = [
   "PARTIAL_RESULT",
   "CONFIG_INVALID",
   "JIRA_UNAVAILABLE",
+  "JAM_SETUP_REQUIRED",
 ] as const;
 
 export type JamErrorCode = (typeof JAM_ERROR_CODES)[number];

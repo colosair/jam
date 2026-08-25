@@ -56,10 +56,28 @@ export type CurrentUser = {
   emailAddress?: string;
 };
 
+export type ProjectRef = {
+  key: string;
+  name: string;
+};
+
+export type ListProjectsResult = {
+  projects: ProjectRef[];
+  /** True when more projects exist than were returned - advisory only, not paginated. */
+  truncated: boolean;
+};
+
 export interface JiraReadPort {
   searchPage(req: SearchPageRequest): Promise<SearchPageResult>;
   getIssues(req: GetIssuesRequest): Promise<GetIssuesResult>;
   getComments(req: GetCommentsRequest): Promise<GetCommentsResult>;
   /** Used by `jam doctor` to prove authentication works. */
   getCurrentUser(): Promise<CurrentUser>;
+  /**
+   * Advisory only - used by `jam setup` to show the operator their options
+   * when no project key could be decided safely. Not part of the MCP tool
+   * contract and not held to the completeness/pagination guarantees that
+   * govern tool results.
+   */
+  listProjects(): Promise<ListProjectsResult>;
 }

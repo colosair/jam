@@ -8,6 +8,7 @@ import type {
   GetIssuesRequest,
   GetIssuesResult,
   JiraReadPort,
+  ListProjectsResult,
   SearchPageRequest,
   SearchPageResult,
 } from "../src/ports/jira-read.port.js";
@@ -34,7 +35,12 @@ export class FakeCredentials implements CredentialPort {
     };
   }
   describe() {
-    return { baseUrl: "https://example.atlassian.net", email: "user@example.com", hasToken: true };
+    return {
+      baseUrl: "https://example.atlassian.net",
+      email: "user@example.com",
+      hasToken: true,
+      source: "process" as const,
+    };
   }
 }
 
@@ -44,6 +50,7 @@ export type FakeJiraOptions = {
   missingKeys?: string[];
   commentTotals?: Record<string, number>;
   commentPages?: Record<string, GetCommentsResult[]>;
+  projects?: ListProjectsResult;
 };
 
 /** In-memory JiraReadPort so pagination and completeness can be tested exactly. */
@@ -85,6 +92,10 @@ export class FakeJira implements JiraReadPort {
 
   async getCurrentUser() {
     return { accountId: "acc-1", displayName: "Test User" };
+  }
+
+  async listProjects(): Promise<ListProjectsResult> {
+    return this.options.projects ?? { projects: [], truncated: false };
   }
 }
 

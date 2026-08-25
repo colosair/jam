@@ -1,35 +1,48 @@
 #!/usr/bin/env node
 import { doctor } from "./cli/doctor.js";
+import { serve } from "./cli/serve.js";
 import { setup } from "./cli/setup.js";
 import { toJamError } from "./domain/errors.js";
-import { serve } from "./mcp/stdio.js";
 
 const USAGE = `jam - Jira Agent MCP
 
 Usage:
-  jam serve     Run the MCP server over stdio (default; this is what Claude Code / Codex launch)
-  jam doctor    Diagnose config, credentials and Jira connectivity
-  jam setup     Install, build, then run doctor
+  jam serve               Run the MCP server over stdio (default; this is what Claude Code / Codex launch)
+  jam doctor              Diagnose config, credentials and Jira connectivity
+  jam setup [--project KEY]
+                          Wire up this project (project.yaml, .mcp.json) and run doctor
 
 Environment:
-  JIRA_BASE_URL   https://your-site.atlassian.net
-  JIRA_EMAIL      Atlassian account email
-  JIRA_API_TOKEN  Atlassian API token
+  JIRA_BASE_URL     https://your-site.atlassian.net
+  JIRA_EMAIL        Atlassian account email
+  JIRA_API_TOKEN    Atlassian API token
+  JAM_PROJECT_KEY   Jira project key, used by \`jam setup\`/\`jam serve\` when no
+                     .jira-agent/project.yaml exists yet
+
+Credentials and JAM_PROJECT_KEY are read from the current shell's environment
+first, then (on Windows) from the User environment - so a value set with
+\`setx\` works without opening a new terminal.
 `;
 
-async function main(): Promise<number> {
-  const command = process.argv[2] ?? "serve";
+function findFlagValue(argv: string[], flag: string): string | undefined {
+  const index = argv.indexOf(flag);
+  return index >= 0 ? argv[index + 1] : undefined;
+}
 
-  switch (command) {
+async function main(): Promise<number> {
+  const [command, ...rest] = process.argv.slice(2);
+
+  switch (command ?? "serve") {
     case "serve":
-      await serve();
-      return -1; // stays alive on the stdio transport
+      return serve();
 
     case "doctor":
       return doctor();
 
-    case "setup":
-      return setup();
+    case "setup": {
+      const explicitKey = findFlagValue(rest, "--project");
+      return setup(explicitKey ? { explicitKey } : {});
+    }
 
     case "help":
     case "--help":
@@ -45,10 +58,14 @@ async function main(): Promise<number> {
 
 main()
   .then((code) => {
-    if (code >= 0) process.exit(code);
+    // Setting exitCode and letting Node exit naturally (rather than forcing
+    // process.exit()) avoids a libuv assertion crash observed on Windows when
+    // this process has mixed spawnSync (reg.exe/where) with async fetch calls -
+    // a forced exit can race a handle that is still closing.
+    if (code >= 0) process.exitCode = code;
   })
   .catch((err) => {
     const jamError = toJamError(err);
     process.stderr.write(`[jam] ${jamError.code}: ${jamError.message}\n`);
-    process.exit(1);
+    process.exitCode = 1;
   });
