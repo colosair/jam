@@ -4,6 +4,13 @@ import { showRuntime, useRuntime } from "./cli/runtime.js";
 import { serve } from "./cli/serve.js";
 import { setup } from "./cli/setup.js";
 import { runSetupWizard } from "./cli/setup-wizard.js";
+import {
+  authStatusCommand,
+  doctorJsonCommand,
+  setupAgentCommand,
+  setupApplyCommand,
+  setupPlanCommand,
+} from "./cli/agent-api.js";
 import { toJamError } from "./domain/errors.js";
 
 const USAGE = `jam - Jira Agent MCP
@@ -16,6 +23,14 @@ Usage:
   jam runtime             Show which JAM build this machine runs
   jam runtime use package | development <path>
                           Change it (writes ~/.jam/config.yaml only, never a project)
+
+For coding agents and scripts (stdout is JSON only, never prompts):
+  jam setup --agent       One shot: detect, plan, apply what is safe, verify
+  jam setup plan --json   Report what setup would change, changing nothing
+  jam setup apply --non-interactive --json
+                          Execute the plan
+  jam doctor --json       Health check as structured output
+  jam auth status --json  Whether Jira credentials are configured (never their value)
 
 Environment:
   JIRA_BASE_URL     https://your-site.atlassian.net
@@ -42,7 +57,7 @@ async function main(): Promise<number> {
       return serve();
 
     case "doctor":
-      return doctor();
+      return rest.includes("--json") ? doctorJsonCommand() : doctor();
 
     case "setup": {
       const explicitKey = findFlagValue(rest, "--project");
@@ -50,8 +65,14 @@ async function main(): Promise<number> {
         ...(explicitKey ? { explicitKey } : {}),
         ...(rest.includes("--migrate") ? { migrate: true } : {}),
       };
-      // The wizard can ask; the plain path never does. Anything scripted or
-      // agent-driven takes the second, so a question can never block it.
+
+      // Agent entry points first: each is non-interactive by construction, so
+      // no question can ever block an automated caller.
+      if (rest.includes("--agent")) return setupAgentCommand(shared);
+      if (rest[0] === "plan") return setupPlanCommand(shared);
+      if (rest[0] === "apply") return setupApplyCommand(shared);
+
+      // The wizard can ask; the plain path never does.
       return rest.includes("--non-interactive") ? setup(shared) : runSetupWizard(shared);
     }
 
@@ -59,6 +80,12 @@ async function main(): Promise<number> {
       const json = rest.includes("--json");
       if (rest[0] === "use") return useRuntime(rest[1], rest[2], { json });
       return showRuntime({ json });
+    }
+
+    case "auth": {
+      if (rest[0] === "status") return authStatusCommand();
+      process.stderr.write("Usage: jam auth status [--json]\n");
+      return 1;
     }
 
     case "help":
