@@ -84,19 +84,22 @@ export async function runJamCommand(argv: string[]): Promise<number> {
 
     case "setup": {
       const explicitKey = findFlagValue(rest, "--project");
-      const shared = {
+      const common = {
         ...(explicitKey ? { explicitKey } : {}),
         ...(rest.includes("--migrate") ? { migrate: true } : {}),
+        // Personal by default: JAM is configured for this user, and the
+        // repository is only written to when someone asks for the team.
+        ...(rest.includes("--shared") ? { shared: true } : {}),
       };
 
       // Agent entry points first: each is non-interactive by construction, so
       // no question can ever block an automated caller.
-      if (rest.includes("--agent")) return setupAgentCommand(shared);
-      if (rest[0] === "plan") return setupPlanCommand(shared);
-      if (rest[0] === "apply") return setupApplyCommand(shared);
+      if (rest.includes("--agent")) return setupAgentCommand(common);
+      if (rest[0] === "plan") return setupPlanCommand(common);
+      if (rest[0] === "apply") return setupApplyCommand(common);
 
       // The wizard can ask; the plain path never does.
-      return rest.includes("--non-interactive") ? setup(shared) : runSetupWizard(shared);
+      return rest.includes("--non-interactive") ? setup(common) : runSetupWizard(common);
     }
 
     case "runtime": {

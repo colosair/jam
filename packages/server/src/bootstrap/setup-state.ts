@@ -7,7 +7,9 @@ import { CompositeCredentialProvider } from "../adapters/credentials/composite.j
 import { loadConfig } from "../config/load-config.js";
 import type { CredentialPort, CredentialSource } from "../ports/credentials.port.js";
 import { inspectMcpConfig, isLegacyJamEntry, type McpInspection } from "./mcp-config-merger.js";
+import { inspectProjectBindings, type ProjectBinding } from "./project-bindings.js";
 import { resolveProjectRoot } from "./project-root-resolver.js";
+import { workspaceIdentity, type GitRemoteFn } from "./workspace-identity.js";
 
 export type RuntimeState = {
   configured: boolean;
@@ -32,10 +34,20 @@ export type ProjectState = {
   key?: string;
   /** Set when a config file exists but could not be parsed. */
   error?: string;
+  /** What this user has bound this workspace to, if anything. */
+  binding?: ProjectBinding;
 };
 
 export type SetupState = {
   cwd: string;
+  /** Stable id for this workspace - what a personal binding is recorded against. */
+  workspaceId: string;
+  /**
+   * True when `~/.jam/projects.yaml` exists but could not be read. Recorded
+   * rather than thrown so planning can refuse to rewrite it, instead of
+   * discovering the problem halfway through applying.
+   */
+  bindingsUnreadable: boolean;
   runtime: RuntimeState;
   credentials: CredentialState;
   project: ProjectState;
@@ -47,6 +59,8 @@ export type DetectOptions = {
   /** Injected by tests to isolate ~/.jam. */
   home?: string;
   credentials?: CredentialPort;
+  /** Injected by tests so identity never depends on the checkout under test. */
+  git?: GitRemoteFn;
 };
 
 /**
@@ -58,13 +72,22 @@ export type DetectOptions = {
  */
 export function detectSetupState(options: DetectOptions = {}): SetupState {
   const cwd = options.cwd ?? process.cwd();
+  const located = resolveProjectRoot(cwd);
+  const workspaceId = workspaceIdentity(located.root, {
+    ...(located.gitRoot ? { gitRoot: located.gitRoot } : {}),
+    ...(options.git ? { git: options.git } : {}),
+  });
+  const bindings = inspectProjectBindings(options.home);
+  const binding = bindings.bindings.find((b) => b.workspace === workspaceId);
 
   return {
     cwd,
+    workspaceId,
+    bindingsUnreadable: bindings.status === "unreadable",
     runtime: detectRuntime(options.home),
     credentials: detectCredentials(options.credentials ?? new CompositeCredentialProvider()),
-    project: detectProject(cwd),
-    mcp: detectMcp(resolveProjectRoot(cwd).root),
+    project: { ...detectProject(located), ...(binding ? { binding } : {}) },
+    mcp: detectMcp(located.root),
   };
 }
 
@@ -95,8 +118,8 @@ function detectCredentials(credentials: CredentialPort): CredentialState {
   return state;
 }
 
-function detectProject(cwd: string): ProjectState {
-  const { root, hasConfig } = resolveProjectRoot(cwd);
+function detectProject(located: { root: string; hasConfig: boolean }): ProjectState {
+  const { root, hasConfig } = located;
   if (!hasConfig) return { root, hasConfig: false };
 
   try {

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { CONFIG_RELATIVE_PATH } from "../config/load-config.js";
 import type { MigrationTarget } from "./migration-target.js";
+import { projectBindingsPath } from "./project-bindings.js";
 import { decideProjectKey, type BootstrapSource } from "./project-config-bootstrapper.js";
 import type { SetupState } from "./setup-state.js";
 
@@ -8,6 +9,7 @@ export type SetupStatus = "already_configured" | "ready_to_apply" | "user_action
 
 export type SetupCode =
   | "JAM_PROJECT_SELECTION_REQUIRED"
+  | "JAM_BINDINGS_UNREADABLE"
   | "JAM_AUTH_REQUIRED"
   | "JAM_RUNTIME_CONFIG_MISSING"
   | "JAM_PROJECT_CONFIG_INVALID"
@@ -24,7 +26,17 @@ export type SetupChange =
     }
   | { type: "create"; target: "mcp-config"; path: string }
   | { type: "merge"; target: "mcp-config"; path: string; preserveExisting: string[] }
-  | { type: "replace"; target: "mcp-config"; path: string; reason: "migrate" };
+  | { type: "replace"; target: "mcp-config"; path: string; reason: "migrate" }
+  | {
+      type: "create" | "replace";
+      target: "personal-binding";
+      path: string;
+      workspaceId: string;
+      key: string;
+      keySource: BootstrapSource;
+      /** Present on a rebind, so the preview shows what is being replaced. */
+      previousKey?: string;
+    };
 
 export type SetupPlan = {
   status: SetupStatus;
@@ -40,6 +52,12 @@ export type SetupPlan = {
 };
 
 export type PlanOptions = {
+  /**
+   * `--shared`: adopt JAM for the team, writing `.jira-agent/project.yaml` and
+   * `.mcp.json` into the repository. Without it setup is personal and the
+   * repository is left alone - discovery is allowed, adoption is asked for.
+   */
+  shared?: boolean;
   /** `--project KEY`. */
   explicitKey?: string;
   /** `--migrate`: rewrite a legacy jam entry instead of leaving it alone. */
@@ -69,9 +87,11 @@ export type PlanOptions = {
  */
 export function computeSetupPlan(state: SetupState, options: PlanOptions = {}): SetupPlan {
   const changes: SetupChange[] = [];
+  const shared = options.shared ?? false;
 
   // A config file that exists but cannot be parsed is a stop, not something to
-  // overwrite - the user's settings are in there.
+  // overwrite - the user's settings are in there. It is read in both scopes,
+  // so a broken one blocks either.
   if (state.project.error) {
     return {
       status: "user_action_required",
@@ -81,7 +101,9 @@ export function computeSetupPlan(state: SetupState, options: PlanOptions = {}): 
       project: { root: state.project.root },
     };
   }
-  if (state.mcp.unreadable) {
+  // Personal setup never opens .mcp.json, so a broken one there is not its
+  // problem to report.
+  if (shared && state.mcp.unreadable) {
     return {
       status: "user_action_required",
       code: "JAM_MCP_CONFIG_UNREADABLE",
@@ -103,6 +125,25 @@ export function computeSetupPlan(state: SetupState, options: PlanOptions = {}): 
     };
   }
 
+  const project = { root: state.project.root, key: key.key };
+
+  if (!shared) {
+    // Personal scope: the record of "this workspace is that Jira project"
+    // lives with the user, and nothing in the repository is touched.
+    const bindingChange = planBindingChange(state, key);
+    if (bindingChange && state.bindingsUnreadable) {
+      return {
+        status: "user_action_required",
+        code: "JAM_BINDINGS_UNREADABLE",
+        changes: [],
+        requiresUserAction: true,
+        project,
+      };
+    }
+    if (bindingChange) changes.push(bindingChange);
+    return finish(changes, state, project);
+  }
+
   if (!state.project.hasConfig) {
     changes.push({
       type: "create",
@@ -114,7 +155,6 @@ export function computeSetupPlan(state: SetupState, options: PlanOptions = {}): 
   }
 
   const mcpChange = planMcpChange(state, options);
-  const project = { root: state.project.root, key: key.key };
 
   // A migration replaces wiring the user already has working. Refuse to plan
   // that against a destination nobody has confirmed is reachable - and answer
@@ -133,9 +173,21 @@ export function computeSetupPlan(state: SetupState, options: PlanOptions = {}): 
 
   if (mcpChange) changes.push(mcpChange);
 
-  // Credentials are a human boundary: JAM can wire the project up regardless,
-  // but it cannot authenticate on the user's behalf. The plan therefore still
-  // carries its changes - apply them, then stop for the person.
+  return finish(changes, state, project);
+}
+
+/**
+ * The stops that apply to either scope, and the verdict.
+ *
+ * Credentials and runtime are human boundaries: JAM can wire things up
+ * regardless, but it cannot authenticate on the user's behalf. Both stops
+ * therefore still carry their changes - apply them, then stop for the person.
+ */
+function finish(
+  changes: SetupChange[],
+  state: SetupState,
+  project: { root: string; key: string },
+): SetupPlan {
   if (!state.credentials.present) {
     return {
       status: "user_action_required",
@@ -166,16 +218,45 @@ export function computeSetupPlan(state: SetupState, options: PlanOptions = {}): 
   };
 }
 
+/**
+ * What the binding file should say, or nothing when it already says it.
+ *
+ * A repository that declares its own key needs no personal note: the team's
+ * file is already the answer, and recording a second copy would only create
+ * something to disagree with later.
+ */
+function planBindingChange(
+  state: SetupState,
+  key: { key: string; source: BootstrapSource },
+): SetupChange | undefined {
+  if (state.project.key) return undefined;
+
+  const existing = state.project.binding;
+  if (existing?.key === key.key) return undefined;
+
+  return {
+    type: existing ? "replace" : "create",
+    target: "personal-binding",
+    path: projectBindingsPath(),
+    workspaceId: state.workspaceId,
+    key: key.key,
+    keySource: key.source,
+    ...(existing ? { previousKey: existing.key } : {}),
+  };
+}
+
 function resolveKey(
   state: SetupState,
   options: PlanOptions,
 ): { key: string; source: BootstrapSource } | undefined {
-  // An existing project.yaml wins: setup must never silently repoint a project.
+  // An existing project.yaml wins: setup must never silently repoint a project,
+  // and a personal note must never override what the team committed.
   if (state.project.key) return { key: state.project.key, source: "explicit" };
 
   const decideOptions: Parameters<typeof decideProjectKey>[1] = {};
   if (options.explicitKey) decideOptions.explicitKey = options.explicitKey;
   if (options.env) decideOptions.env = options.env;
+  if (state.project.binding) decideOptions.bindingKey = state.project.binding.key;
   if (options.presetsPath) decideOptions.presetsPath = options.presetsPath;
 
   return decideProjectKey(state.project.root, decideOptions);

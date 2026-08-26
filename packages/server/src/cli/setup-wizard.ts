@@ -21,6 +21,8 @@ export type WizardOptions = {
   cwd?: string;
   home?: string;
   explicitKey?: string;
+  /** `--shared`: adopt JAM for the team by writing into the repository. */
+  shared?: boolean;
   migrate?: boolean;
   ui?: Ui;
   /**
@@ -79,13 +81,19 @@ export async function runSetupWizard(options: WizardOptions = {}): Promise<numbe
   }
 }
 
+/**
+ * "Nothing left to do" depends on the scope this workspace is actually set up
+ * in: a personal user has a binding and no repository files, and telling them
+ * their setup is incomplete because `.mcp.json` is missing would be wrong.
+ */
 function isFullyConfigured(state: SetupState): boolean {
+  const wired = state.mcp.hasJamEntry || Boolean(state.project.binding);
   return (
     state.runtime.configured &&
     !state.runtime.error &&
     state.credentials.present &&
-    Boolean(state.project.key) &&
-    state.mcp.hasJamEntry
+    Boolean(state.project.key || state.project.binding) &&
+    wired
   );
 }
 
@@ -135,7 +143,7 @@ async function runStatusMenu(
       return await authLoginCommand({ ui, ...options.auth });
     case "repair": {
       const plan = computeSetupPlanWithPreflight(state, planOptions(options), probe(ui));
-      const applied = applySetupPlan(plan);
+      const applied = applySetupPlan(plan, options.home ? { home: options.home } : {});
       ui.line();
       if (applied.changesApplied) ui.success("Project wiring repaired");
       else ui.success("Nothing to repair");
@@ -252,11 +260,17 @@ async function wireProject(ui: Ui, state: SetupState, options: WizardOptions): P
 
   const plan = computeSetupPlanWithPreflight(state, planOptions(options), probe(ui));
 
-  if (plan.code === "JAM_PROJECT_CONFIG_INVALID" || plan.code === "JAM_MCP_CONFIG_UNREADABLE") {
+  if (
+    plan.code === "JAM_PROJECT_CONFIG_INVALID" ||
+    plan.code === "JAM_MCP_CONFIG_UNREADABLE" ||
+    plan.code === "JAM_BINDINGS_UNREADABLE"
+  ) {
     ui.failure(
       plan.code === "JAM_PROJECT_CONFIG_INVALID"
         ? "The project's .jira-agent/project.yaml could not be parsed"
-        : "The project's .mcp.json is not valid JSON",
+        : plan.code === "JAM_BINDINGS_UNREADABLE"
+          ? "Your ~/.jam/projects.yaml could not be read"
+          : "The project's .mcp.json is not valid JSON",
     );
     ui.line("  Fix it and re-run - JAM will not overwrite it.");
     return 1;
@@ -269,8 +283,15 @@ async function wireProject(ui: Ui, state: SetupState, options: WizardOptions): P
   if (plan.changes.length === 0) {
     ui.success("Project already wired", state.project.key ?? "");
   } else {
-    for (const change of applySetupPlan(plan).applied) {
-      if (change.target === "project-config") {
+    for (const change of applySetupPlan(plan, options.home ? { home: options.home } : {})
+      .applied) {
+      if (change.target === "personal-binding") {
+        ui.success(
+          change.previousKey ? "Workspace re-bound" : "Workspace bound",
+          change.previousKey ? `${change.previousKey} → ${change.key}` : change.key,
+        );
+        ui.line("  Recorded for you only - the repository was not touched.");
+      } else if (change.target === "project-config") {
         ui.success("Project configured", `${change.key} · from ${change.keySource}`);
       } else if (change.type === "merge") {
         ui.success(
@@ -382,6 +403,7 @@ function describeRuntime(state: SetupState): string {
 
 function planOptions(options: WizardOptions): Parameters<typeof computeSetupPlan>[1] {
   return {
+    ...(options.shared ? { shared: options.shared } : {}),
     ...(options.explicitKey ? { explicitKey: options.explicitKey } : {}),
     ...(options.migrate ? { migrate: options.migrate } : {}),
     ...(options.env ? { env: options.env } : {}),

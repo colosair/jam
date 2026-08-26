@@ -104,10 +104,11 @@ describe("agent API output contract", () => {
     expect(out).not.toMatch(ANSI_PATTERN);
   });
 
-  it("returns a stable shape for a fresh project", async () => {
+  it("returns a stable shape for a fresh project, and touches nothing in it", async () => {
+    const root = project();
     const { out, code } = await capture(() =>
       setupPlanCommand({
-        cwd: project(),
+        cwd: root,
         home: homeWithRuntime(),
         explicitKey: "PROJECT",
         ...authenticated(),
@@ -120,11 +121,28 @@ describe("agent API output contract", () => {
       requiresUserAction: false,
       changesApplied: false,
     });
+    // Personal is the default scope: the plan records the binding for this
+    // user and proposes nothing inside the repository.
     expect(payload.changes.map((c: { type: string; target: string }) => `${c.type}:${c.target}`)).toEqual([
-      "create:project-config",
-      "create:mcp-config",
+      "create:personal-binding",
     ]);
     expect(code).toBe(0);
+  });
+
+  it("plans the repository files only when the team scope is asked for", async () => {
+    const { out } = await capture(() =>
+      setupPlanCommand({
+        cwd: project(),
+        home: homeWithRuntime(),
+        explicitKey: "PROJECT",
+        shared: true,
+        ...authenticated(),
+      }),
+    );
+
+    expect(
+      JSON.parse(out).changes.map((c: { type: string; target: string }) => `${c.type}:${c.target}`),
+    ).toEqual(["create:project-config", "create:mcp-config"]);
   });
 
   it("reports selection required with a machine-readable code, not prose", async () => {

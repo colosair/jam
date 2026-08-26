@@ -5,12 +5,16 @@ import { describe, expect, it } from "vitest";
 import { LAUNCHER_PACKAGE_SPEC } from "../../src/bootstrap/mcp-config-merger.js";
 import {
   checkMigrationTarget,
-  computeSetupPlanWithPreflight,
+  computeSetupPlanWithPreflight as computeSharedPlanWithPreflight,
   type MigrationTarget,
   type RunResult,
 } from "../../src/bootstrap/migration-target.js";
 import { applySetupPlan } from "../../src/bootstrap/setup-apply.js";
-import { computeSetupPlan } from "../../src/bootstrap/setup-plan.js";
+import {
+  computeSetupPlan as computeScopedPlan,
+  type PlanOptions,
+  type SetupPlan,
+} from "../../src/bootstrap/setup-plan.js";
 import { detectSetupState } from "../../src/bootstrap/setup-state.js";
 import type { CredentialPort } from "../../src/ports/credentials.port.js";
 import { snapshot } from "../helpers.js";
@@ -65,7 +69,29 @@ function homeWithRuntime(): string {
 }
 
 function detect(root: string, home: string, credentials: CredentialPort) {
-  return detectSetupState({ cwd: root, home, credentials });
+  // No remote in a temp directory, and asking the real git for one would make
+  // every case here depend on the checkout the suite happens to run in.
+  return detectSetupState({ cwd: root, home, credentials, git: () => undefined });
+}
+
+/**
+ * This suite is about team adoption - the scope that writes into the
+ * repository - so `--shared` is implied throughout. Personal scope, which is
+ * the default, has its own describe below.
+ */
+function computeSetupPlan(
+  state: Parameters<typeof computeScopedPlan>[0],
+  options: PlanOptions = {},
+): SetupPlan {
+  return computeScopedPlan(state, { shared: true, ...options });
+}
+
+function computeSetupPlanWithPreflight(
+  state: Parameters<typeof computeSharedPlanWithPreflight>[0],
+  options: PlanOptions = {},
+  run?: Parameters<typeof computeSharedPlanWithPreflight>[2],
+): SetupPlan {
+  return computeSharedPlanWithPreflight(state, { shared: true, ...options }, run);
 }
 
 /** A .mcp.json whose jam entry only works on the machine that wrote it. */
@@ -89,6 +115,109 @@ const targetMissing: MigrationTarget = {
 function neverProbe(): MigrationTarget {
   throw new Error("migration target was probed when no replacement was pending");
 }
+
+describe("personal scope (the default)", () => {
+  it("plans a binding and proposes nothing inside the repository", () => {
+    const root = bareProject();
+    const before = snapshot(root);
+
+    const plan = computeScopedPlan(detect(root, homeWithRuntime(), configuredCredentials), {
+      explicitKey: "PROJECT",
+    });
+
+    expect(plan.changes.map((c) => `${c.type}:${c.target}`)).toEqual(["create:personal-binding"]);
+    expect(snapshot(root)).toEqual(before);
+  });
+
+  it("writes the binding to the user's home and leaves the repository byte-identical", () => {
+    const root = bareProject();
+    const home = homeWithRuntime();
+    const before = snapshot(root);
+
+    const plan = computeScopedPlan(detect(root, home, configuredCredentials), {
+      explicitKey: "PROJECT",
+    });
+    applySetupPlan(plan, { home });
+
+    expect(snapshot(root)).toEqual(before);
+    expect(readdirSync(root)).toEqual([".git"]);
+    expect(readFileSync(join(home, ".jam", "projects.yaml"), "utf8")).toContain("key: PROJECT");
+  });
+
+  it("plans nothing on a second pass", () => {
+    const root = bareProject();
+    const home = homeWithRuntime();
+    applySetupPlan(
+      computeScopedPlan(detect(root, home, configuredCredentials), { explicitKey: "PROJECT" }),
+      { home },
+    );
+
+    const second = computeScopedPlan(detect(root, home, configuredCredentials), {
+      explicitKey: "PROJECT",
+    });
+
+    expect(second.status).toBe("already_configured");
+    expect(second.changes).toEqual([]);
+  });
+
+  it("re-binds explicitly, showing what is being replaced", () => {
+    const root = bareProject();
+    const home = homeWithRuntime();
+    applySetupPlan(
+      computeScopedPlan(detect(root, home, configuredCredentials), { explicitKey: "OLD" }),
+      { home },
+    );
+
+    const plan = computeScopedPlan(detect(root, home, configuredCredentials), {
+      explicitKey: "NEW",
+    });
+
+    // Not silent: the preview names the key that is about to be replaced.
+    expect(plan.changes).toMatchObject([
+      { type: "replace", target: "personal-binding", key: "NEW", previousKey: "OLD" },
+    ]);
+  });
+
+  it("records nothing when the repository already declares its own key", () => {
+    const root = bareProject();
+    withProjectConfig(root, "TEAMKEY");
+
+    const plan = computeScopedPlan(detect(root, homeWithRuntime(), configuredCredentials));
+
+    // The team's file is already the answer; a second copy would only be
+    // something to disagree with later.
+    expect(plan.changes).toEqual([]);
+    expect(plan.project?.key).toBe("TEAMKEY");
+  });
+
+  it("refuses to rewrite a binding file it could not read", () => {
+    const root = bareProject();
+    const home = homeWithRuntime();
+    const bindings = join(home, ".jam", "projects.yaml");
+    writeFileSync(bindings, "version: 1\nbindings: [ broken: : :\n", "utf8");
+    const before = readFileSync(bindings, "utf8");
+
+    const plan = computeScopedPlan(detect(root, home, configuredCredentials), {
+      explicitKey: "PROJECT",
+    });
+
+    expect(plan.code).toBe("JAM_BINDINGS_UNREADABLE");
+    expect(plan.changes).toEqual([]);
+    expect(readFileSync(bindings, "utf8")).toBe(before);
+  });
+
+  it("ignores an unreadable .mcp.json, which personal setup never opens", () => {
+    const root = bareProject();
+    writeFileSync(join(root, ".mcp.json"), "{ not json", "utf8");
+
+    const plan = computeScopedPlan(detect(root, homeWithRuntime(), configuredCredentials), {
+      explicitKey: "PROJECT",
+    });
+
+    expect(plan.code).toBeUndefined();
+    expect(plan.changes.map((c) => c.target)).toEqual(["personal-binding"]);
+  });
+});
 
 describe("detectSetupState", () => {
   it("reads state without creating anything", () => {

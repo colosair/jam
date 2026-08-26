@@ -6,7 +6,7 @@ import { listVisibleProjects } from "../bootstrap/jira-projects.js";
 import { computeSetupPlanWithPreflight } from "../bootstrap/migration-target.js";
 import { applySetupPlan } from "../bootstrap/setup-apply.js";
 import { type SetupPlan } from "../bootstrap/setup-plan.js";
-import { detectSetupState } from "../bootstrap/setup-state.js";
+import { detectSetupState, type SetupState } from "../bootstrap/setup-state.js";
 import { toJamError } from "../domain/errors.js";
 import { buildDeps } from "../deps.js";
 
@@ -14,6 +14,12 @@ export type SetupOptions = {
   cwd?: string;
   /** `--project KEY` */
   explicitKey?: string;
+  /**
+   * `--shared`: adopt JAM for the team, writing `.jira-agent/project.yaml` and
+   * `.mcp.json`. Without it setup records the binding for this user only and
+   * leaves the repository untouched.
+   */
+  shared?: boolean;
   /** `--migrate`: rewrite a legacy jam entry in .mcp.json. */
   migrate?: boolean;
   /** Injected by tests to isolate ~/.jam. */
@@ -39,6 +45,7 @@ export async function setup(options: SetupOptions = {}): Promise<number> {
 
   const state = detectSetupState({ cwd, ...(options.home ? { home: options.home } : {}) });
   const plan = computeSetupPlanWithPreflight(state, {
+    ...(options.shared ? { shared: options.shared } : {}),
     ...(options.explicitKey ? { explicitKey: options.explicitKey } : {}),
     ...(options.migrate ? { migrate: options.migrate } : {}),
   });
@@ -46,12 +53,20 @@ export async function setup(options: SetupOptions = {}): Promise<number> {
   if (plan.code === "JAM_PROJECT_SELECTION_REQUIRED") {
     return reportProjectSelectionRequired(state.project.root);
   }
-  if (plan.code === "JAM_PROJECT_CONFIG_INVALID" || plan.code === "JAM_MCP_CONFIG_UNREADABLE") {
+  if (
+    plan.code === "JAM_PROJECT_CONFIG_INVALID" ||
+    plan.code === "JAM_MCP_CONFIG_UNREADABLE" ||
+    plan.code === "JAM_BINDINGS_UNREADABLE"
+  ) {
     line(`[FAIL] ${describeBlockingCode(plan)}`);
     return 1;
   }
 
-  reportApplied(applySetupPlan(plan).applied, plan);
+  reportApplied(
+    applySetupPlan(plan, options.home ? { home: options.home } : {}).applied,
+    plan,
+  );
+  reportBindingDisagreement(state);
 
   // The rewrite the user asked for is the thing that failed, so it is reported
   // before anything else - and reported as a stop, not a warning: continuing to
@@ -103,6 +118,14 @@ function reportApplied(applied: ReturnType<typeof applySetupPlan>["applied"], pl
     return;
   }
   for (const change of applied) {
+    if (change.target === "personal-binding") {
+      const what = change.previousKey
+        ? `re-bound from ${change.previousKey} to ${change.key}`
+        : `bound to ${change.key} (from ${change.keySource})`;
+      line(`[OK]   ${change.path} - this workspace ${what}`);
+      line("       Nothing was written to the repository. Use --shared to adopt JAM for the team.");
+      continue;
+    }
     if (change.target === "project-config") {
       line(`[OK]   ${change.path} created - project.key = ${change.key} (from ${change.keySource})`);
       continue;
@@ -123,9 +146,27 @@ function reportApplied(applied: ReturnType<typeof applySetupPlan>["applied"], pl
 }
 
 function describeBlockingCode(plan: SetupPlan): string {
-  return plan.code === "JAM_PROJECT_CONFIG_INVALID"
-    ? "The project's .jira-agent/project.yaml could not be parsed. Fix it and re-run."
-    : "The project's .mcp.json is not valid JSON. Fix it and re-run - JAM will not overwrite it.";
+  if (plan.code === "JAM_PROJECT_CONFIG_INVALID") {
+    return "The project's .jira-agent/project.yaml could not be parsed. Fix it and re-run.";
+  }
+  if (plan.code === "JAM_BINDINGS_UNREADABLE") {
+    return "Your ~/.jam/projects.yaml could not be read. Fix or remove it and re-run - JAM will not overwrite it.";
+  }
+  return "The project's .mcp.json is not valid JSON. Fix it and re-run - JAM will not overwrite it.";
+}
+
+/**
+ * A committed project key and a personal binding can disagree - normally
+ * because the team adopted JAM after someone bound the repo. The file wins,
+ * and saying so is better than silently ignoring one of them or deleting the
+ * other on the user's behalf.
+ */
+function reportBindingDisagreement(state: SetupState): void {
+  const bound = state.project.binding?.key;
+  if (!bound || !state.project.key || bound === state.project.key) return;
+  line(
+    `[WARN] Personal binding says ${bound}; ${state.project.configPath ?? "the project config"} says ${state.project.key} - the project file wins.`,
+  );
 }
 
 /** The JAM monorepo checkout itself, where setup should also install and build. */
