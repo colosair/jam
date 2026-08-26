@@ -49,11 +49,6 @@ Two rules make this work:
 
 ## Setup
 
-JAM is not published to npm yet. The package layout builds and passes isolated
-tarball smoke tests, but the `npx` paths below become live only after
-publication — until then, use the development route in
-[Development](#development).
-
 **For a person**, once per machine:
 
 ```bash
