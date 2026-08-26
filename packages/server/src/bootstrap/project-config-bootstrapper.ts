@@ -64,7 +64,7 @@ function findPresetKey(root: string, presetsPath: string): string | undefined {
 }
 
 /** Windows paths are case-insensitive; every other platform is compared as-is. */
-function normalizePath(p: string): string {
+export function normalizePath(p: string): string {
   const resolved = resolve(p);
   return platform() === "win32" ? resolved.toLowerCase() : resolved;
 }

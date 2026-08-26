@@ -36,7 +36,9 @@ describe("resolveProjectRoot", () => {
     const nested = join(root, "apps", "web");
     mkdirSync(nested, { recursive: true });
 
-    expect(resolveProjectRoot(nested)).toEqual({ root, hasConfig: false });
+    // gitRoot is reported alongside: the walk already found it, and workspace
+    // identity needs it rather than repeating the search.
+    expect(resolveProjectRoot(nested)).toEqual({ root, hasConfig: false, gitRoot: root });
   });
 
   it("treats a .git FILE (worktree/submodule) the same as a .git directory", () => {
@@ -45,7 +47,7 @@ describe("resolveProjectRoot", () => {
     const nested = join(root, "src");
     mkdirSync(nested, { recursive: true });
 
-    expect(resolveProjectRoot(nested)).toEqual({ root, hasConfig: false });
+    expect(resolveProjectRoot(nested)).toEqual({ root, hasConfig: false, gitRoot: root });
   });
 
   it("uses the nearest ancestor, not the outermost repo root", () => {

@@ -6,6 +6,11 @@ export type ProjectRoot = {
   root: string;
   /** True when an existing `.jira-agent/project.yaml` was found at `root`. */
   hasConfig: boolean;
+  /**
+   * The nearest enclosing repository, when there is one. Already found on the
+   * way up; reported so workspace identity does not have to walk again.
+   */
+  gitRoot?: string;
 };
 
 /**
@@ -23,12 +28,18 @@ export function resolveProjectRoot(startDir: string = process.cwd()): ProjectRoo
   let dir = resolve(startDir);
   let gitRoot: string | undefined;
 
+  let configRoot: string | undefined;
+
   for (;;) {
-    if (existsSync(join(dir, CONFIG_RELATIVE_PATH))) {
-      return { root: dir, hasConfig: true };
+    if (configRoot === undefined && existsSync(join(dir, CONFIG_RELATIVE_PATH))) {
+      configRoot = dir;
+      // Keep walking only far enough to learn which repository this is in;
+      // the config still decides the root.
+      if (gitRoot !== undefined) break;
     }
     if (gitRoot === undefined && existsSync(join(dir, ".git"))) {
       gitRoot = dir;
+      if (configRoot !== undefined) break;
     }
 
     const parent = dirname(dir);
@@ -36,5 +47,10 @@ export function resolveProjectRoot(startDir: string = process.cwd()): ProjectRoo
     dir = parent;
   }
 
-  return { root: gitRoot ?? resolve(startDir), hasConfig: false };
+  const root = configRoot ?? gitRoot ?? resolve(startDir);
+  return {
+    root,
+    hasConfig: configRoot !== undefined,
+    ...(gitRoot ? { gitRoot } : {}),
+  };
 }
