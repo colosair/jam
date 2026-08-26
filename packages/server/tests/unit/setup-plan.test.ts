@@ -13,6 +13,7 @@ import { applySetupPlan } from "../../src/bootstrap/setup-apply.js";
 import { computeSetupPlan } from "../../src/bootstrap/setup-plan.js";
 import { detectSetupState } from "../../src/bootstrap/setup-state.js";
 import type { CredentialPort } from "../../src/ports/credentials.port.js";
+import { snapshot } from "../helpers.js";
 
 function tmp(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));
@@ -61,20 +62,6 @@ function homeWithRuntime(): string {
   mkdirSync(join(home, ".jam"), { recursive: true });
   writeFileSync(join(home, ".jam", "config.yaml"), "version: 1\nruntime:\n  mode: package\n", "utf8");
   return home;
-}
-
-/** Recursive snapshot of a directory tree: relative path -> contents. */
-function snapshot(root: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  const walk = (dir: string) => {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else out[relative(root, full)] = readFileSync(full, "utf8");
-    }
-  };
-  walk(root);
-  return out;
 }
 
 function detect(root: string, home: string, credentials: CredentialPort) {

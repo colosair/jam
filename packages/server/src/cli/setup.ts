@@ -84,7 +84,7 @@ export async function setup(options: SetupOptions = {}): Promise<number> {
 async function verify(root: string): Promise<number> {
   let deps: Awaited<ReturnType<typeof buildDeps>>;
   try {
-    deps = await buildDeps({ cwd: root, bootstrap: false });
+    deps = await buildDeps({ cwd: root });
   } catch (err) {
     line(`[FAIL] Project config - ${toJamError(err).message}`);
     return 1;

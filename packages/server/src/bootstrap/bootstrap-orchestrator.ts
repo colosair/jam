@@ -6,16 +6,20 @@ export type BootstrapResult = {
   gate: GateResult;
 };
 
-export type BootstrapForServeOptions = Pick<BuildDepsOptions, "cwd" | "jira" | "credentials">;
+export type BootstrapForServeOptions = Pick<
+  BuildDepsOptions,
+  "cwd" | "jira" | "credentials" | "env" | "presetsPath"
+>;
 
 /**
- * `jam serve`'s boot path: safe-bootstrap the project config if one doesn't
- * exist yet, then run the local-only "boot" gate. No live Jira call happens
- * here - that keeps every `claude` startup fast even when Jira itself is slow
- * or briefly unreachable.
+ * `jam serve`'s boot path: resolve the project config - reading a file if the
+ * project has one, otherwise falling back to an explicitly supplied key - then
+ * run the local-only "boot" gate. Nothing here writes to the repository, and
+ * no live Jira call happens either, so every `claude` startup stays fast even
+ * when Jira is slow or briefly unreachable.
  */
 export async function bootstrapForServe(options: BootstrapForServeOptions = {}): Promise<BootstrapResult> {
-  const deps = await buildDeps({ ...options, bootstrap: true });
+  const deps = await buildDeps({ ...options, allowKeyFallback: true });
   const gate = await runHealthGate(deps, "boot");
   return { deps, gate };
 }

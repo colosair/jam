@@ -44,9 +44,14 @@ export async function runHealthGate(deps: JamDeps, mode: GateMode): Promise<Gate
     name: "Project config",
     ok: true,
     fatal: true,
+    // Three states, not two: a project with no config file may still have a
+    // key, supplied for this run only. Saying "using defaults" there would
+    // report the opposite of what JAM is about to do.
     detail: deps.configPath
       ? `${deps.configPath} (project=${deps.config.project.key || "unset"})`
-      : "using defaults (no .jira-agent/project.yaml found)",
+      : deps.keySource
+        ? `no project.yaml - project=${deps.config.project.key} from ${deps.keySource}`
+        : "using defaults (no .jira-agent/project.yaml found)",
   });
 
   const hasKey = Boolean(deps.config.project.key);

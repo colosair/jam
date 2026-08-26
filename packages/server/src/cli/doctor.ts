@@ -11,7 +11,7 @@ import { runHealthGate } from "../bootstrap/boot-health-gate.js";
 export async function doctor(cwd?: string): Promise<number> {
   let deps: Awaited<ReturnType<typeof buildDeps>>;
   try {
-    deps = await buildDeps({ cwd, bootstrap: false });
+    deps = await buildDeps({ cwd });
   } catch (err) {
     process.stdout.write(`[FAIL] Project config - ${toJamError(err).message}\n`);
     return 1;

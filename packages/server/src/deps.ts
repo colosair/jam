@@ -1,6 +1,7 @@
 import { NoopCache } from "./adapters/cache/noop-cache.js";
 import { CompositeCredentialProvider } from "./adapters/credentials/composite.js";
 import { ConsoleTelemetry } from "./adapters/telemetry/console-telemetry.js";
+import type { BootstrapSource } from "./bootstrap/project-config-bootstrapper.js";
 import { resolveProjectConfig } from "./bootstrap/project-config-resolver.js";
 import type { ProjectConfig } from "./config/schema.js";
 import type { CachePort } from "./ports/cache.port.js";
@@ -12,6 +13,8 @@ import type { TelemetryPort } from "./ports/telemetry.port.js";
 export type JamDeps = {
   config: ProjectConfig;
   configPath?: string;
+  /** Where the project key came from when no config file supplied one. */
+  keySource?: BootstrapSource;
   jira: JiraReadPort;
   cache: CachePort;
   telemetry: TelemetryPort;
@@ -25,13 +28,16 @@ export type BuildDepsOptions = {
   /** Injected by tests to bypass the real process/registry credential lookup. */
   credentials?: CredentialPort;
   /**
-   * Attempt safe project.yaml bootstrap when none exists. `jam serve` and
-   * `jam setup` pass true; `jam doctor` leaves this false, since doctor only
-   * reports on what already exists and never writes.
+   * Let an explicit key (flag, env, preset) stand in when the project has no
+   * config file. Nothing is written either way - see resolveProjectConfig.
    */
-  bootstrap?: boolean;
+  allowKeyFallback?: boolean;
   /** `--project` override, passed through from `jam setup`. */
   explicitKey?: string;
+  /** Injected by tests so a decision never depends on the machine's environment. */
+  env?: NodeJS.ProcessEnv;
+  /** Injected by tests so a decision never reads the developer's own presets. */
+  presetsPath?: string;
 };
 
 /**
@@ -45,8 +51,10 @@ export type BuildDepsOptions = {
 export async function buildDeps(options: BuildDepsOptions = {}): Promise<JamDeps> {
   const resolved = resolveProjectConfig({
     cwd: options.cwd,
-    bootstrap: options.bootstrap ?? false,
+    allowKeyFallback: options.allowKeyFallback ?? false,
     explicitKey: options.explicitKey,
+    ...(options.env ? { env: options.env } : {}),
+    ...(options.presetsPath ? { presetsPath: options.presetsPath } : {}),
   });
   const credentials = options.credentials ?? new CompositeCredentialProvider();
   const telemetry = new ConsoleTelemetry(resolved.config.telemetry.enabled);
@@ -62,6 +70,7 @@ export async function buildDeps(options: BuildDepsOptions = {}): Promise<JamDeps
   return {
     config: resolved.config,
     configPath: resolved.configPath,
+    keySource: resolved.keySource,
     jira,
     cache: new NoopCache(),
     telemetry,

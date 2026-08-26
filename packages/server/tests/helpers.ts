@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
 import type { JamDeps } from "../src/deps.js";
 import { ProjectConfigSchema, type ProjectConfig } from "../src/config/schema.js";
 import { NoopCache } from "../src/adapters/cache/noop-cache.js";
@@ -14,6 +16,26 @@ import type {
 } from "../src/ports/jira-read.port.js";
 import type { TelemetryPort, ToolMetrics } from "../src/ports/telemetry.port.js";
 import type { FullIssueContext } from "../src/domain/context.js";
+
+/**
+ * Recursive snapshot of a directory tree: relative path -> contents.
+ *
+ * Shared because "this command changed nothing" is asserted from several
+ * angles - a plan that must not mutate, a serve that must not write - and the
+ * comparison has to mean the same thing in all of them.
+ */
+export function snapshot(root: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else out[relative(root, full)] = readFileSync(full, "utf8");
+    }
+  };
+  walk(root);
+  return out;
+}
 
 export function testConfig(overrides: Record<string, unknown> = {}): ProjectConfig {
   return ProjectConfigSchema.parse({ project: { key: "PROJECT" }, ...overrides });

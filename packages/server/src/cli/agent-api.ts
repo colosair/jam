@@ -178,7 +178,7 @@ type GateResult = {
 
 async function gateResult(root: string): Promise<GateResult> {
   try {
-    const deps = await buildDeps({ cwd: root, bootstrap: false });
+    const deps = await buildDeps({ cwd: root });
     const gate = await runHealthGate(deps, "full");
     return { passed: gate.passed, checks: gate.checks };
   } catch (err) {

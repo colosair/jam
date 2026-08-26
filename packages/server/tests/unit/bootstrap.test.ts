@@ -108,19 +108,34 @@ describe("resolveProjectConfig", () => {
     const root = tmp("jam-existing-");
     withConfig(root, "version: 1\nproject:\n  key: PROJECT\n");
 
-    const resolved = resolveProjectConfig({ cwd: root, bootstrap: true, explicitKey: "SHOULD_BE_IGNORED" });
+    const resolved = resolveProjectConfig({
+      cwd: root,
+      allowKeyFallback: true,
+      explicitKey: "SHOULD_BE_IGNORED",
+    });
     expect(resolved.config.project.key).toBe("PROJECT");
-    expect(resolved.bootstrapped).toBe(false);
+    expect(resolved.configPath).toBeTruthy();
+    // The file said it, so there is no fallback source to report.
+    expect(resolved.keySource).toBeUndefined();
   });
 
-  it("safely bootstraps a minimal project.yaml when a key can be decided", () => {
-    const root = tmp("jam-bootstrap-");
+  it("resolves a decided key in memory and writes nothing", () => {
+    const root = tmp("jam-fallback-");
     mkdirSync(join(root, ".git"), { recursive: true });
 
-    const resolved = resolveProjectConfig({ cwd: root, bootstrap: true, explicitKey: "PROJECT" });
-    expect(resolved.bootstrapped).toBe(true);
+    const resolved = resolveProjectConfig({
+      cwd: root,
+      allowKeyFallback: true,
+      explicitKey: "PROJECT",
+      env: {},
+      presetsPath: join(root, "does-not-exist.yaml"),
+    });
+
     expect(resolved.config.project.key).toBe("PROJECT");
-    expect(existsSync(join(root, ".jira-agent", "project.yaml"))).toBe(true);
+    expect(resolved.keySource).toBe("explicit");
+    expect(resolved.configPath).toBeUndefined();
+    // Deciding a key is resolution; persisting one is `jam setup`'s job alone.
+    expect(existsSync(join(root, ".jira-agent"))).toBe(false);
   });
 
   it("throws JAM_SETUP_REQUIRED and writes nothing when no key can be decided safely", () => {
@@ -129,19 +144,24 @@ describe("resolveProjectConfig", () => {
 
     // env is pinned: an ambient JAM_PROJECT_KEY would otherwise supply a key
     // and this test would stop testing the "no safe source" path.
-    expect(() => resolveProjectConfig({ cwd: root, bootstrap: true, env: {} })).toThrowError(
-      expect.objectContaining({ code: "JAM_SETUP_REQUIRED" }),
-    );
+    expect(() =>
+      resolveProjectConfig({
+        cwd: root,
+        allowKeyFallback: true,
+        env: {},
+        presetsPath: join(root, "does-not-exist.yaml"),
+      }),
+    ).toThrowError(expect.objectContaining({ code: "JAM_SETUP_REQUIRED" }));
     expect(existsSync(join(root, ".jira-agent", "project.yaml"))).toBe(false);
   });
 
-  it("does not bootstrap when bootstrap is not requested (doctor's read-only path)", () => {
+  it("falls back to defaults when no fallback key is allowed (doctor's read-only path)", () => {
     const root = tmp("jam-readonly-");
     mkdirSync(join(root, ".git"), { recursive: true });
 
-    const resolved = resolveProjectConfig({ cwd: root, bootstrap: false });
-    expect(resolved.bootstrapped).toBe(false);
+    const resolved = resolveProjectConfig({ cwd: root });
     expect(resolved.config.project.key).toBe("");
+    expect(resolved.keySource).toBeUndefined();
     expect(existsSync(join(root, ".jira-agent", "project.yaml"))).toBe(false);
   });
 });

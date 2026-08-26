@@ -347,7 +347,6 @@ async function verify(ui: Ui, root: string, options: WizardOptions): Promise<num
   try {
     deps = await buildDeps({
       cwd: root,
-      bootstrap: false,
       ...(options.credentials ? { credentials: options.credentials } : {}),
       ...(options.jira ? { jira: options.jira } : {}),
     });

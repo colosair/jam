@@ -22,7 +22,9 @@ export async function serve(options: BootstrapForServeOptions = {}): Promise<num
   const server = createServer(deps);
   await server.connect(new StdioServerTransport());
   process.stderr.write(
-    `[jam] serving on stdio (project=${deps.config.project.key || "unset"}, config=${deps.configPath ?? "generated"})\n`,
+    `[jam] serving on stdio (project=${deps.config.project.key || "unset"}, config=${
+      deps.configPath ?? `none (key from ${deps.keySource ?? "defaults"})`
+    })\n`,
   );
   return -1; // stays alive on the stdio transport
 }
