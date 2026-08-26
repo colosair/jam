@@ -25,6 +25,12 @@ private/
 # their own project.yaml. Note this ignores the one file, not .jira-agent/.
 .jira-agent/project.yaml
 
+# JAM's default scope is personal: `jam setup` writes nothing into a
+# repository, and JAM's own repository is not an exception. A maintainer wires
+# their checkout up through their own MCP config and ~/.jam/config.yaml, so
+# anything that lands here is one machine's local state, not this project's.
+.mcp.json
+
 # editors / OS
 .DS_Store
 .idea/

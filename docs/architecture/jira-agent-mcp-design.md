@@ -888,7 +888,7 @@ jira-agent-mcp/
 │  └─ benchmark/
 │
 ├─ scripts/
-│  ├─ setup.ps1
+│  ├─ dev-setup.ps1
 │  └─ doctor.ts
 │
 ├─ package.json

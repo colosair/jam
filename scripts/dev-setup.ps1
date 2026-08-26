@@ -1,11 +1,15 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  One-command setup for JAM (Jira Agent MCP).
+  Developer checkout setup for JAM (Jira Agent MCP) source contributors.
 
 .DESCRIPTION
-  Checks the Node version, installs dependencies, builds, then runs `jam doctor`
-  so the result is a verdict rather than a pile of build output.
+  Not the installation path. Someone who wants to use JAM runs
+  `npx --yes @jam-mcp/bootstrap@1.0.1 init` and never clones this repository.
+
+  This is for working on JAM itself: it checks the Node version, installs
+  dependencies, builds, then runs doctor so the result is a verdict rather than
+  a pile of build output.
 
   Credentials are read from the environment and are never written to disk by
   this script.
