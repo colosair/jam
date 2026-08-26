@@ -6,8 +6,8 @@ This package exists so the *first* command a person or a coding agent runs needs
 nothing installed beforehand:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.0.0 init          # for a person
-npx --yes @jam-mcp/bootstrap@1.0.0 setup --agent # for a coding agent, JSON only
+npx --yes @jam-mcp/bootstrap@1.0.1 init          # for a person
+npx --yes @jam-mcp/bootstrap@1.0.1 setup --agent # for a coding agent, JSON only
 ```
 
 `init` chooses how JAM runs on this machine and wires up the current project.
@@ -19,20 +19,26 @@ authenticating).
 
 It is an end-user entry point, but it holds **no setup logic of its own**. It
 depends on `@jam-mcp/server` at an exact version and forwards to the same
-commands a locally installed `jam` would run; anything other than `init` is
-passed through unchanged. Any decision made here would be a second
-implementation to keep in sync with the setup core.
+commands JAM's own CLI would run; anything other than `init` is passed through
+unchanged. Any decision made here would be a second implementation to keep in
+sync with the setup core.
+
+That pass-through is also why bootstrap is what JAM names in machine-readable
+instructions. On a machine that has just met JAM there is no global command to
+call and no configured runtime for the launcher to dispatch to — bootstrap
+needs neither, so `npx --yes @jam-mcp/bootstrap@1.0.1 <anything>` works when
+nothing else does.
 
 The three packages divide up like this:
 
 | Package | Role |
 |---|---|
-| `@jam-mcp/bootstrap` | first run, before anything is installed — forwards to the CLI |
+| `@jam-mcp/bootstrap` | first run and recovery — needs nothing installed |
 | `@jam-mcp/launcher` | what a coding agent registers; resolves which JAM build runs |
-| `@jam-mcp/server` | JAM itself: MCP tools, setup core, `jam` CLI |
+| `@jam-mcp/server` | JAM itself: MCP tools, setup core, CLI |
 
-After first run you don't need this package again — day to day, the coding agent
-launches the launcher, and you use the `jam` CLI.
+Day to day you don't need this package: your coding agent launches the
+launcher, and if you installed the launcher globally you have `jam` too.
 
 ## More
 

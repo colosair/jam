@@ -15,6 +15,7 @@
     "test": "npm run test --workspaces --if-present",
     "pack:all": "node scripts/pack-all.mjs",
     "smoke": "node scripts/tarball-smoke.mjs",
+    "release:check": "node scripts/release-check.mjs",
     "doctor": "node packages/server/dist/index.js doctor",
     "serve": "node packages/server/dist/index.js serve"
   },

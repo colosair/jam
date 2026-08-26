@@ -22,7 +22,7 @@ still get full context, and every teammate gets the same policy.
 | `jira_context` | readiness, blockers, dependencies, priority | the above + issue type, parent, subtasks, links (with `blocksThisIssue`), whitelisted custom fields |
 | `jira_full` | agreement, contract, approval, closure | the above + description and the full comment thread |
 
-Two rules make this work:
+Three rules make this work:
 
 1. **A `jira_search` result is never complete issue context.** Don't conclude
    agreement, approval, or done-ness from it.
@@ -60,12 +60,12 @@ zero-install first run,
 [`@jam-mcp/launcher`](https://www.npmjs.com/package/@jam-mcp/launcher) as the
 runtime entry your coding agent registers, and
 [`@jam-mcp/server`](https://www.npmjs.com/package/@jam-mcp/server) for JAM
-itself — the MCP server, the setup core and the `jam` CLI.
+itself — the MCP server, the setup core and the CLI they all reach.
 
 **For a person**, once per machine:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.0.0 init
+npx --yes @jam-mcp/bootstrap@1.0.1 init
 ```
 
 Choose whether you're *using* JAM (runs the published package) or *developing*
@@ -73,6 +73,18 @@ it (runs your local checkout), authenticate to Jira once, and you're done. From
 then on it's just `claude` or `codex` inside any wired project.
 
 **For a coding agent** — see [Setup with a coding agent](#setup-with-a-coding-agent).
+
+`jam` is a short command you can opt into; JAM does not need it. It comes from
+installing the launcher globally, and everything it runs still goes through the
+runtime you chose above:
+
+```bash
+npm install -g @jam-mcp/launcher@1.0.1
+```
+
+Without it, the same commands are `npx --yes @jam-mcp/launcher@1.0.1 <command>`.
+Nothing else changes — not your editor's wiring, not a shared `.mcp.json`, not
+a teammate who never installed it.
 
 Authenticate once, and the credentials live where your operating system keeps
 them for you — never in a repo:
@@ -111,25 +123,31 @@ to set JAM up in a project, **use the official path** rather than working out
 an installation from this README:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.0.0 setup --agent
+npx --yes @jam-mcp/bootstrap@1.0.1 setup --agent
 ```
 
 or, to inspect before acting:
 
 ```bash
-jam setup plan --json                       # what would change; changes nothing
-jam setup apply --non-interactive --json    # execute it
-jam doctor --json                           # verify
+npx --yes @jam-mcp/bootstrap@1.0.1 setup plan --json                     # what would change; changes nothing
+npx --yes @jam-mcp/bootstrap@1.0.1 setup apply --non-interactive --json  # execute it
+npx --yes @jam-mcp/bootstrap@1.0.1 doctor --json                         # verify
 ```
 
 Each returns a single JSON document on stdout with a stable status code. Branch
 on the code; never parse prose.
+
+Run them through `npx` as written, not as `jam …`. A machine you have never
+seen has no global install and no configured runtime, and bootstrap is the one
+entry point that needs neither. The same rule governs what JAM hands back: a
+plan's `nextAction.command` is always an `npx` invocation you can run as-is.
 
 Do **not**:
 
 - copy JAM source into the project
 - use `npm link` for consumer setup
 - modify global `PATH` or user environment variables
+- assume a global `jam` exists, or install one to make setup work
 - write Jira credentials into any repository file
 - guess a Jira project key from a repo or directory name
 - overwrite or remove unrelated `.mcp.json` entries
@@ -137,9 +155,13 @@ Do **not**:
 
 Stop only where a person is genuinely required — `JAM_PROJECT_SELECTION_REQUIRED`
 (ask which Jira project) and `JAM_AUTH_REQUIRED` (ask them to authenticate).
-Finish with `jam doctor --json`.
+Finish with `npx --yes @jam-mcp/bootstrap@1.0.1 doctor --json`.
 
 ## Commands
+
+These read as `jam …` throughout — the short form from the optional global
+install above. Everything works the same as `npx --yes @jam-mcp/launcher@1.0.1
+…` if you skipped it.
 
 ```text
 jam serve                    Run the MCP server over stdio (what Claude Code / Codex launch)
@@ -206,7 +228,7 @@ and is safe to commit:
 ```json
 {
   "mcpServers": {
-    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.0.0", "serve"] }
+    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.0.1", "serve"] }
   }
 }
 ```
@@ -290,8 +312,8 @@ whitelist is the point of the tool.
 An npm workspaces monorepo:
 
 ```text
-packages/server      @jam-mcp/server      CLI, setup core, MCP tools  (bin: jam)
-packages/launcher    @jam-mcp/launcher    which JAM build runs        (bin: jam-launcher)
+packages/server      @jam-mcp/server      CLI, setup core, MCP tools  (bin: jam-server)
+packages/launcher    @jam-mcp/launcher    which JAM build runs        (bin: jam-launcher, jam)
 packages/bootstrap   @jam-mcp/bootstrap   zero-install first run      (bin: jam-bootstrap)
 ```
 
@@ -321,6 +343,9 @@ Inside `packages/server`, layout follows ports & adapters — `src/domain`,
 [design documents](#design-documents) above.
 
 ## Security
+
+Found a vulnerability? See [SECURITY.md](SECURITY.md) — report it privately,
+and never paste a Jira token into an issue.
 
 - Credentials come from `CompositeCredentialProvider` (process env, then this
   user's OS secret store, then Windows User env) through `CredentialPort`, and

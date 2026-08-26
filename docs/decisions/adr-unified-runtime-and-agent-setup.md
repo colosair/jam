@@ -80,10 +80,18 @@ a question can be asked. That is a property of the front end, not of setup.
 ### Why the launcher is a separate package
 
 It could have been a mode of the server. Making it separate buys one thing:
-`.mcp.json` can name it at a stable exact version while the server underneath
-changes independently. The cost is a third package to release; the benefit is
-that the file a team commits does not have to be rewritten every time the
-server version moves.
+`.mcp.json` says *which project uses JAM* without saying *where JAM lives*. The
+committed file names a package; which build actually runs is each teammate's
+own `~/.jam/config.yaml`, so one repository can serve someone on the published
+release and someone else on a local checkout, and neither has to edit a shared
+file to get there.
+
+> *Correction:* an earlier version of this section claimed the server could then
+> move independently of the pin in `.mcp.json`. It cannot, and does not: the
+> three packages ship lockstep at one exact version, so a new server release is
+> a new launcher release and the committed pin moves with it. Version
+> indirection only becomes real with D11's project-declared version, and the
+> benefit stated above — location, not version — is what the split buys today.
 
 It stays deliberately tiny — no Jira, no credentials, no setup mutation — so
 that "which build runs" cannot accumulate opinions about anything else.
@@ -170,6 +178,11 @@ are all deferred with their reasons recorded in the architecture document.
 **Nothing is published.** The packages build, pack, and pass isolated tarball
 smoke, but the registry paths are unexercised until publication. The evidence
 that these package boundaries work is the smoke harness, not an install.
+
+> *Since accepted:* the three packages were published as v1.0.0 and the registry
+> paths were exercised end to end — resolution, a host launching the published
+> launcher, package mode reaching the published server, and a live Jira read.
+> The paragraph above records what was true when this decision was made.
 
 ## Related
 

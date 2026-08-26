@@ -55,8 +55,8 @@ Three, released lockstep at the same version.
 
 | Package | Owns | Must not contain |
 |---|---|---|
-| `@jam-mcp/server` | JAM CLI, bootstrap core, Jira ports/adapters, application, domain, policy, MCP server and the three tools. `bin: jam` | — |
-| `@jam-mcp/launcher` | Runtime config, resolver, package/development runtimes, child dispatch with cwd/stdio/exit/signal forwarding. `bin: jam-launcher` | Jira API calls, credential logic, setup mutation, MCP tools |
+| `@jam-mcp/server` | JAM CLI, bootstrap core, Jira ports/adapters, application, domain, policy, MCP server and the three tools. `bin: jam-server` | — |
+| `@jam-mcp/launcher` | Runtime config, resolver, package/development runtimes, child dispatch with cwd/stdio/exit/signal forwarding. `bin: jam-launcher`, plus `jam` as an optional human façade | Jira API calls, credential logic, setup mutation, MCP tools |
 | `@jam-mcp/bootstrap` | Zero-install entry for first run, human and agent. `bin: jam-bootstrap` | Any setup logic of its own — it forwards to the server |
 
 Dependency direction, all exact:
@@ -103,7 +103,7 @@ Neither touches a project.
 ```json
 {
   "mcpServers": {
-    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.0.0", "serve"] }
+    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.0.1", "serve"] }
   }
 }
 ```
@@ -324,11 +324,17 @@ decision, not a detection. Everything else an agent can complete on its own.
 | D11 Project-required `runtime.jamVersion` | planned |
 | D12 Standalone binary | only on real demand |
 
-**Not done: publishing to npm.** The packages build, pack and pass isolated
-tarball smoke, but nothing is on the registry — so `npx @jam-mcp/...` paths
-become real only after publication. Until then, development mode and a direct
-node path are the working routes, which is why this repo's own `.mcp.json`
-still points straight at `packages/server/dist/index.js`.
+**Published.** `@jam-mcp/launcher`, `@jam-mcp/server` and `@jam-mcp/bootstrap`
+went to the public registry as v1.0.0 under MIT, and the `npx` paths above were
+then exercised for real: registry resolution, a coding agent launching the
+published launcher, package mode reaching the published server, three MCP tools,
+a live Jira read, zero repository footprint under personal scope, and a `--shared`
+merge that left an unrelated `.mcp.json` entry untouched.
+
+This repository no longer commits an `.mcp.json` of its own. JAM's default scope
+is personal — setup writes nothing into a repository — and JAM's own repository
+is not an exception: a maintainer registers their checkout through their own MCP
+config, with `~/.jam/config.yaml` in development mode pointing at it.
 
 ## Testing strategy
 

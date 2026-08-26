@@ -38,21 +38,28 @@ source, that source is what settles the question.
 
 ## Running it
 
-Normally you don't run this package directly — your coding agent launches
+Don't install this package to use JAM. Your coding agent launches
 [`@jam-mcp/launcher`](https://www.npmjs.com/package/@jam-mcp/launcher), which
-resolves which JAM build this machine runs and dispatches here. Going through
-the launcher is what keeps a committed `.mcp.json` free of machine-specific
-paths.
+reads your `~/.jam/config.yaml`, decides which JAM build this machine should
+run, and dispatches here. Naming the server directly instead pins one machine
+to one build and bypasses that choice — and it is what keeps a committed
+`.mcp.json` free of machine-specific paths.
 
-The `jam` CLI is the same binary:
+The same binary carries the CLI, and every command below is reachable through
+the launcher:
 
 ```text
-jam serve      Run the MCP server over stdio
-jam doctor     Diagnose config, credentials and Jira connectivity
-jam setup      Wire up JAM and verify (personal by default; --shared for the team)
-jam auth login Store Jira credentials in this user's OS secret store
-jam runtime    Show or change which JAM build this machine runs
+serve        Run the MCP server over stdio
+doctor       Diagnose config, credentials and Jira connectivity
+setup        Wire up JAM and verify (personal by default; --shared for the team)
+auth login   Store Jira credentials in this user's OS secret store
+runtime      Show or change which JAM build this machine runs
 ```
+
+Written out, that is `npx --yes @jam-mcp/launcher@1.0.1 doctor`, or just `jam
+doctor` if you took the launcher's optional global install. Starting from
+nothing — no install, no runtime chosen yet — use
+`npx --yes @jam-mcp/bootstrap@1.0.1 init` instead.
 
 Credentials come from the process environment or this user's OS secret store —
 never from a repository file — and never appear in logs, telemetry, or tool

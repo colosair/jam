@@ -9,7 +9,7 @@ indirection is what lets a committed `.mcp.json` name no machine-specific path:
 ```json
 {
   "mcpServers": {
-    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.0.0", "serve"] }
+    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.0.1", "serve"] }
   }
 }
 ```
@@ -24,19 +24,35 @@ project:
 - **development** — runs a local checkout of `@jam-mcp/server`, for people
   working on JAM itself.
 
-Configure it with `jam runtime use package | development <path>`, or during
-first-run setup.
+Set it during first run, or with `runtime use package` / `runtime use
+development <path>`.
 
 ## Usage
 
 Normal use is indirect: your coding agent launches `jam-launcher serve` and
 speaks MCP to whatever it dispatched to. Any other command is forwarded to the
 configured runtime unchanged, so `jam-launcher doctor` reaches the same
-diagnosis as `jam doctor`.
+diagnosis JAM's own CLI would.
 
-Prefer the launcher over invoking `@jam-mcp/server` directly. Calling the
-server by hand pins one machine to one build and bypasses the runtime config
-that `jam runtime` manages.
+## The optional `jam` command
+
+This package installs under two names from one entry point: `jam-launcher`,
+and `jam` for people who want the short form.
+
+```bash
+npm install -g @jam-mcp/launcher@1.0.1
+```
+
+That is a convenience, not a prerequisite. JAM is fully usable without it —
+your editor launches the launcher through `npx`, and so can you. Nothing JAM
+writes or hands to a machine assumes `jam` is on anyone's PATH: a shared
+`.mcp.json` names the `npx` form, and so does every command JAM tells a script
+to run.
+
+Note what `jam` is *not*: it is not a global install of JAM. It is this
+dispatcher, which still reads `~/.jam/config.yaml` and still runs the runtime
+selected there. Installing `@jam-mcp/server` globally instead would pin one
+machine to one build and bypass that choice.
 
 ## More
 

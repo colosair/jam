@@ -59,13 +59,26 @@ needs to be checked.
 ## Installing JAM into another project
 
 If asked to set JAM up somewhere, use the official setup path — do not work out
-an installation procedure from the README:
+an installation procedure from the README. One command does the whole thing:
 
 ```bash
-jam setup plan --json                       # what would change; changes nothing
-jam setup apply --non-interactive --json    # execute it
-jam doctor --json                           # verify
+npx --yes @jam-mcp/bootstrap@1.0.1 setup --agent
 ```
+
+To inspect before acting, the same three steps separately:
+
+```bash
+npx --yes @jam-mcp/bootstrap@1.0.1 setup plan --json                     # what would change; changes nothing
+npx --yes @jam-mcp/bootstrap@1.0.1 setup apply --non-interactive --json  # execute it
+npx --yes @jam-mcp/bootstrap@1.0.1 doctor --json                         # verify
+```
+
+Run them through `npx` exactly as written. A bare `jam` is a convenience some
+people install and most machines do not have, and the launcher cannot stand in
+for it before a runtime is configured — bootstrap is the only entry point that
+needs neither. This holds for what JAM hands back too: a plan's
+`nextAction.command` is already an `npx` invocation, so run it as given rather
+than shortening it.
 
 These are personal by default: they record the binding in the user's
 `~/.jam/projects.yaml` and register JAM with this machine's coding agents,
@@ -73,9 +86,8 @@ leaving the repository byte-identical. Add `--shared` only when the user has
 asked to adopt JAM for the team — that is what writes `.jira-agent/project.yaml`
 and `.mcp.json` into the repository. Never add it on your own initiative.
 
-`npx --yes @jam-mcp/bootstrap@1.0.0 setup --agent` does all three in one shot
-when nothing is installed yet. Each returns a single JSON document with a
-stable status code — branch on the code, never on prose.
+Each returns a single JSON document with a stable status code — branch on the
+code, never on prose.
 
 Never: copy JAM source into the project, `npm link` for consumer setup, modify
 `PATH` or user environment variables, write credentials into a repository file,
@@ -84,13 +96,13 @@ guess a Jira project key, overwrite unrelated `.mcp.json` entries, assemble
 MCP config file, or pass `--shared` without being asked to.
 
 Stop only for `JAM_PROJECT_SELECTION_REQUIRED` (ask which Jira project) and
-`JAM_AUTH_REQUIRED` (tell the user to run `jam auth login` themselves). Finish
-with `jam doctor --json`.
+`JAM_AUTH_REQUIRED` (tell the user to authenticate themselves). Finish with
+`npx --yes @jam-mcp/bootstrap@1.0.1 doctor --json`.
 
 Authentication is the one step that is not yours to do. Never ask for an API
-token, never accept one that is offered, never store one, and never run
-`jam auth login` on someone's behalf - it is interactive and human-only by
-design. Report `JAM_AUTH_REQUIRED` and stop.
+token, never accept one that is offered, never store one, and never run the
+login on someone's behalf - it is interactive and human-only by design.
+Report `JAM_AUTH_REQUIRED` and stop.
 
 ## This repo
 
