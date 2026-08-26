@@ -175,6 +175,20 @@ describe("Ui.secret", () => {
     expect(stream.text()).not.toContain("abc");
   });
 
+  it("leaves nothing behind after an answer either", async () => {
+    const input = fakeInput(true);
+    const ui = new Ui({ stream: captureStream(true), input, color: false, interactive: true });
+
+    const answer = ui.secret("Jira API token", "hint");
+    await type(input, "tok\r");
+
+    expect(await answer).toBe("tok");
+    // Teardown is in finally, so the success path clears up exactly as the
+    // cancel path does.
+    expect(input.listenerCount("keypress")).toBe(0);
+    expect(input.isPaused()).toBe(true);
+  });
+
   it("cancels on escape and leaves the terminal as it found it", async () => {
     const input = fakeInput(true);
     const raw: boolean[] = [];
@@ -215,12 +229,95 @@ describe("Ui.prompt", () => {
 
     expect(await answer).toBe("already@known.com");
   });
+
+  it("lets readline own the line editor, so escape sequences never become text", async () => {
+    const input = fakeInput(true);
+    const ui = new Ui({ stream: captureStream(true), input, color: false, interactive: true });
+
+    const answer = ui.prompt("Paste your Jira URL", "hint");
+    // Arrow-up used to land in the buffer as the literal text "[A".
+    await type(input, "ab\u001b[Ac\r");
+
+    expect(await answer).toBe("abc");
+  });
+
+  it("moves the cursor for real", async () => {
+    const input = fakeInput(true);
+    const ui = new Ui({ stream: captureStream(true), input, color: false, interactive: true });
+
+    const answer = ui.prompt("Paste your Jira URL", "hint");
+    // Ctrl-A to the start, forward-delete the "a", type "Z" in its place.
+    await type(input, "abc\u0001\u001b[3~Z\r");
+
+    expect(await answer).toBe("Zbc");
+  });
+
+  it("cancels on Ctrl-C", async () => {
+    const input = fakeInput(true);
+    const ui = new Ui({ stream: captureStream(true), input, color: false, interactive: true });
+
+    // Escape belongs to the line editor now; Ctrl-C is the cancel key here.
+    const rejection = expect(ui.prompt("Paste your Jira URL", "hint")).rejects.toMatchObject({
+      name: "CancelledError",
+    });
+    await type(input, "\u0003");
+
+    await rejection;
+  });
+
+  it("cancels rather than hanging when stdin ends mid-question", async () => {
+    const input = fakeInput(true);
+    const ui = new Ui({ stream: captureStream(true), input, color: false, interactive: true });
+
+    // A finite stdin that stops answering must fail the run, not wedge it -
+    // this is what keeps a bounded retry loop bounded.
+    const rejection = expect(ui.prompt("Paste your Jira URL", "hint")).rejects.toMatchObject({
+      name: "CancelledError",
+    });
+    await new Promise((r) => setImmediate(r));
+    (input as unknown as { end: () => void }).end();
+
+    await rejection;
+  });
+
+  it("leaves no keypress listener behind", async () => {
+    const input = fakeInput(true);
+    const ui = new Ui({ stream: captureStream(true), input, color: false, interactive: true });
+
+    const answer = ui.prompt("Jira email", "hint");
+    await type(input, "user@example.com\r");
+
+    expect(await answer).toBe("user@example.com");
+    expect(input.listenerCount("keypress")).toBe(0);
+  });
 });
 
-describe("Ui.readInput delete keys", () => {
+describe("Ui.select", () => {
+  it("returns the highlighted choice and leaves nothing behind", async () => {
+    const input = fakeInput(true);
+    const ui = new Ui({ stream: captureStream(true), input, color: false, interactive: true });
+
+    const chosen = ui.select(
+      "How will you use JAM?",
+      [
+        { value: "package", label: "Use JAM" },
+        { value: "development", label: "Develop JAM" },
+      ],
+      "jam runtime use package",
+    );
+    await type(input, "\u001b[B\r");
+
+    expect(await chosen).toBe("development");
+    expect(input.listenerCount("keypress")).toBe(0);
+    expect(input.isPaused()).toBe(true);
+  });
+});
+
+describe("Ui.secret delete keys", () => {
   // Terminals disagree on what Backspace sends, and a Delete key arrives as a
   // named escape sequence. Every one of these has to erase a character, or the
-  // prompt looks broken while the buffer quietly keeps the text.
+  // token prompt looks broken while the buffer quietly keeps the text. Only
+  // `secret` still owns these: `prompt` hands them to readline.
   const deleteKeys: [string, string][] = [
     ["DEL (0x7f)", "\u007f"],
     ["BS (0x08)", "\b"],
@@ -229,10 +326,10 @@ describe("Ui.readInput delete keys", () => {
 
   for (const [label, key] of deleteKeys) {
     it(`erases on ${label}`, async () => {
-      const input = fakeInput();
+      const input = fakeInput(true);
       const ui = new Ui({ stream: captureStream(true), input, color: false, interactive: true });
 
-      const answer = ui.prompt("Email", "hint");
+      const answer = ui.secret("Token", "hint");
       await type(input, `abc${key}${key}x\r`);
 
       expect(await answer).toBe("ax");
@@ -240,10 +337,10 @@ describe("Ui.readInput delete keys", () => {
   }
 
   it("ignores a delete on an empty buffer", async () => {
-    const input = fakeInput();
+    const input = fakeInput(true);
     const ui = new Ui({ stream: captureStream(true), input, color: false, interactive: true });
 
-    const answer = ui.prompt("Email", "hint");
+    const answer = ui.secret("Token", "hint");
     await type(input, "\u007f\u007f\bok\r");
 
     expect(await answer).toBe("ok");
@@ -251,7 +348,7 @@ describe("Ui.readInput delete keys", () => {
 
   it("erases in a masked prompt without putting anything on screen", async () => {
     const stream = captureStream(true);
-    const input = fakeInput();
+    const input = fakeInput(true);
     const ui = new Ui({ stream, input, color: false, interactive: true });
 
     const answer = ui.secret("Token", "hint");

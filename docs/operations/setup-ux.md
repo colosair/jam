@@ -113,8 +113,15 @@ an `.mcp.json` that already has a jam entry — each is reported, not re-asked.
 internal vocabulary; what a user knows is whether they are using it or working
 on it. Default is Use JAM.
 
-**Cancellation is safe and says so.** Esc and Ctrl-C exit with a message
+**Cancellation is safe and says so.** Cancelling exits with a message
 confirming nothing was changed. That holds for a half-typed token too.
+
+Which key cancels follows who owns the line. A typed answer is edited by the
+terminal's own line editor, so Esc belongs to it: Ctrl-C, Ctrl-D or a stdin
+that ends cancel there. The token prompt and the choice list are JAM's own
+readers, and Esc cancels those. JAM does not reimplement line editing to keep
+one key consistent - an editor that mishandles Hangul, wide characters or an
+arrow key costs more than the inconsistency does.
 
 **Ask for what someone has, not for what the code wants.** `jam auth login` asks
 you to *paste your Jira URL* — any page from your site — and takes the origin

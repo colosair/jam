@@ -1,4 +1,4 @@
-import { emitKeypressEvents } from "node:readline";
+import { createInterface, emitKeypressEvents } from "node:readline";
 
 /**
  * The whole of JAM's terminal presentation.
@@ -208,11 +208,38 @@ export class Ui {
   }
 
   /**
-   * Free-text answer. Echoes what is typed.
+   * Free-text answer, echoed as it is typed.
+   *
+   * The line editor is Node's readline, not JAM's: IME composition, CJK width,
+   * grapheme deletion, cursor movement and paste are the terminal's job, and a
+   * hand-rolled reader gets every one of them wrong. Cancelling is Ctrl-C,
+   * Ctrl-D or a closed stdin - readline swallows a lone Escape, so unlike
+   * `secret()` and `select()` this prompt cannot be cancelled with it.
    */
   async prompt(question: string, flagHint: string, fallback?: string): Promise<string> {
-    const answer = await this.readInput(question, { masked: false, flagHint, fallback });
-    return answer || (fallback ?? "");
+    if (!this.interactive) throw new NonInteractiveError(question, flagHint);
+
+    const suffix = fallback ? ` ${this.paint(`[${fallback}]`, "dim")}` : "";
+    // One interface per question, closed in finally. A long-lived one on
+    // process.stdin would swallow the MCP stdio transport in `jam serve`.
+    // historySize 0: a Jira URL and an email are the user's, not JAM's to keep.
+    const rl = createInterface({
+      input: this.input,
+      output: this.stream,
+      terminal: true,
+      historySize: 0,
+    });
+    try {
+      const answer = await new Promise<string>((resolve, reject) => {
+        // Ctrl-C, Ctrl-D and a stdin that ends all arrive as `close`. Without
+        // this the question would hang on a stream nobody is answering.
+        rl.once("close", () => reject(new CancelledError()));
+        rl.question(`${question}${suffix} `, resolve);
+      });
+      return answer || (fallback ?? "");
+    } finally {
+      rl.close();
+    }
   }
 
   /**
@@ -223,22 +250,20 @@ export class Ui {
    * share, or in scrollback.
    */
   async secret(question: string, flagHint: string): Promise<string> {
-    return this.readInput(question, { masked: true, flagHint });
+    if (!this.interactive) throw new NonInteractiveError(question, flagHint);
+    return this.readSecret(question);
   }
 
   /**
-   * The one place raw mode, the keypress listener and the character buffer
-   * live. `prompt` and `secret` differ only in whether input is echoed, so
-   * they must not each own a copy of this.
+   * The only place raw mode and a hand-managed buffer still live.
+   *
+   * A token needs four things - no echo, paste, delete, Enter - and a line
+   * editor that echoes nothing is not something readline offers. Everything
+   * `prompt` needs and this does not - cursor movement, IME, character width -
+   * stays out.
    */
-  private async readInput(
-    question: string,
-    options: { masked: boolean; flagHint: string; fallback?: string },
-  ): Promise<string> {
-    if (!this.interactive) throw new NonInteractiveError(question, options.flagHint);
-
-    const suffix = options.fallback ? ` ${this.paint(`[${options.fallback}]`, "dim")}` : "";
-    this.write(`${question}${suffix} `);
+  private async readSecret(question: string): Promise<string> {
+    this.write(`${question} `);
 
     emitKeypressEvents(this.input);
     const wasRaw = this.input.isRaw ?? false;
@@ -246,19 +271,17 @@ export class Ui {
     this.input.resume();
 
     let buffer = "";
+    let removeListener = () => {};
     try {
       return await new Promise<string>((resolve, reject) => {
         const onKey = (str: string | undefined, key: { name?: string; ctrl?: boolean }) => {
           if (key.name === "return" || key.name === "enter") {
-            if (!options.masked) this.write("\n");
-            else this.line();
-            cleanup();
+            this.line();
             resolve(buffer);
             return;
           }
           if (key.name === "escape" || (key.ctrl && key.name === "c")) {
             this.line();
-            cleanup();
             reject(new CancelledError());
             return;
           }
@@ -274,10 +297,11 @@ export class Ui {
             str === "\u007f" ||
             str === "\b"
           ) {
+            // Drops one UTF-16 unit, not one grapheme. An API token is ASCII,
+            // and no Unicode editor is coming here - that is what `prompt` and
+            // readline are for.
             if (buffer.length === 0) return;
             buffer = buffer.slice(0, -1);
-            // Only an echoed prompt has anything on screen to erase.
-            if (!options.masked) this.write(`${CSI}D${CSI}K`);
             return;
           }
           // Ignore control keys; take printable characters, including whole
@@ -286,18 +310,16 @@ export class Ui {
           const printable = str.replace(/[\u0000-\u001f\u007f]/g, "");
           if (!printable) return;
           buffer += printable;
-          if (!options.masked) this.write(printable);
         };
-        const cleanup = () => {
-          this.input.off("keypress", onKey);
-        };
+        removeListener = () => this.input.off("keypress", onKey);
         this.input.on("keypress", onKey);
       });
     } finally {
-      // Unlike select(), the listener is removed here too: a stray listener
+      // Teardown lives here and nowhere else: a listener stranded by a throw
       // would let the next prompt receive the tail of a token. No cursor
       // restore - this never hides it, and a no-op write would only suggest
       // otherwise.
+      removeListener();
       this.input.setRawMode?.(wasRaw);
       this.input.pause();
     }
@@ -333,6 +355,7 @@ export class Ui {
     this.input.setRawMode?.(true);
     this.input.resume();
 
+    let removeListener = () => {};
     try {
       return await new Promise<T>((resolve, reject) => {
         const onKey = (_str: string, key: { name?: string; ctrl?: boolean }) => {
@@ -343,19 +366,16 @@ export class Ui {
             index = (index + 1) % choices.length;
             render(false);
           } else if (key.name === "return") {
-            cleanup();
             resolve(choices[index]!.value);
           } else if (key.name === "escape" || (key.ctrl && key.name === "c")) {
-            cleanup();
             reject(new CancelledError());
           }
         };
-        const cleanup = () => {
-          this.input.off("keypress", onKey);
-        };
+        removeListener = () => this.input.off("keypress", onKey);
         this.input.on("keypress", onKey);
       });
     } finally {
+      removeListener();
       this.input.setRawMode?.(wasRaw);
       this.input.pause();
       this.write(ANSI.showCursor);
