@@ -41,6 +41,40 @@ const TOKEN_URL = "https://id.atlassian.com/manage-profile/security/api-tokens";
 const ENV_HINT = "set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN instead";
 
 /**
+ * Bounded rather than open: a run whose input has stopped producing usable
+ * answers has to end, and a login that spins forever on a script or a pipe is
+ * worse than one that gives up and says why.
+ */
+const MAX_PROMPT_ATTEMPTS = 3;
+
+/**
+ * Re-ask one step until its answer parses.
+ *
+ * Losing an entire login to one mistyped URL is not a safety property, it is
+ * just the step forgetting what it was asking for. The retry stays inside the
+ * step so callers still see a single exit code.
+ */
+async function askUntilValid<T>(
+  ask: () => Promise<string>,
+  parse: (raw: string) => T | undefined,
+  onInvalid: () => void,
+): Promise<T | undefined> {
+  for (let attempt = 1; attempt <= MAX_PROMPT_ATTEMPTS; attempt++) {
+    const parsed = parse(await ask());
+    if (parsed !== undefined) return parsed;
+    onInvalid();
+  }
+  return undefined;
+}
+
+function giveUp(ui: Ui, what: string): number {
+  ui.line();
+  ui.failure(`No usable ${what} after ${MAX_PROMPT_ATTEMPTS} attempts`);
+  ui.next(`Run:  ${ENV_HINT}`);
+  return 1;
+}
+
+/**
  * A provider caches its answer for its own lifetime, so the effective source
  * after a write can only be observed through a new one.
  */
@@ -74,20 +108,31 @@ export async function authLoginCommand(options: AuthOptions = {}): Promise<numbe
   const existing = readBack().describe();
   // Any page from their Jira site, pasted whole. Nobody should have to know
   // what an origin is, or strip a path by hand, to log in.
-  const pasted = await ui.prompt("Paste your Jira URL", ENV_HINT, existing.baseUrl ?? undefined);
-  const baseUrl = toJiraOrigin(pasted);
-  if (!baseUrl) {
-    ui.failure("That does not look like a Jira URL");
-    ui.line("  Paste any page URL from your Jira site.");
-    return 1;
-  }
+  const baseUrl = await askUntilValid(
+    () => ui.prompt("Paste your Jira URL", ENV_HINT, existing.baseUrl ?? undefined),
+    toJiraOrigin,
+    () => {
+      ui.failure("That does not look like a Jira URL");
+      ui.line("  Paste any page URL from your Jira site.");
+    },
+  );
+  if (!baseUrl) return giveUp(ui, "Jira URL");
 
-  const email = await ui.prompt("Atlassian account email", ENV_HINT, existing.email ?? undefined);
+  // Checked at its own step: an empty email used to surface only after the
+  // token had been typed, which asks for a secret in order to reject the line
+  // before it.
+  const email = await askUntilValid(
+    () => ui.prompt("Atlassian account email", ENV_HINT, existing.email ?? undefined),
+    (raw) => raw.trim() || undefined,
+    () => ui.failure("An Atlassian account email is required"),
+  );
+  if (!email) return giveUp(ui, "Atlassian account email");
+
   ui.line(`  Create a token at ${TOKEN_URL}`);
   const apiToken = await ui.secret("Atlassian API token", ENV_HINT);
-
-  if (!email || !apiToken) {
-    ui.failure("Site URL, email and token are all required");
+  if (!apiToken) {
+    ui.failure("An API token is required");
+    ui.next(`Run:  ${ENV_HINT}`);
     return 1;
   }
 

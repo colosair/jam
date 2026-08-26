@@ -150,7 +150,7 @@ describe("jam auth login", () => {
     expect(store.held?.baseUrl).toBe("https://example.atlassian.net");
   });
 
-  it("rejects a URL it cannot parse, before asking for anything else", async () => {
+  it("gives up on a URL it cannot parse, without asking for anything else", async () => {
     const stream = captureStream();
     const input = fakeInput();
     const ui = new Ui({ stream, input, color: false, interactive: true });
@@ -166,12 +166,62 @@ describe("jam auth login", () => {
         return undefined;
       },
     });
-    await answer(input, ["example.atlassian.net"]);
+    // Re-asked, but not forever: three unusable answers end the command.
+    await answer(input, ["example.atlassian.net", "also not a url", "still not a url"]);
 
     expect(await run).toBe(1);
     expect(verified).toBe(false);
     expect(store.writes).toBe(0);
     expect(stream.text()).toMatch(/does not look like a Jira URL/);
+    expect(stream.text()).toMatch(/after 3 attempts/);
+    expect(stream.text()).not.toContain("Atlassian API token");
+  });
+
+  it("re-asks the URL and carries on with the same run", async () => {
+    const stream = captureStream();
+    const input = fakeInput();
+    const ui = new Ui({ stream, input, color: false, interactive: true });
+    const store = fakeStore();
+
+    const run = authLoginCommand({ ui, store, verify: accepts, readBack: () => port(none) });
+    await answer(input, ["example.atlassian.net", BASE_URL, EMAIL, SECRET]);
+
+    // One mistyped URL used to cost the whole login.
+    expect(await run).toBe(0);
+    expect(store.held?.baseUrl).toBe(BASE_URL);
+  });
+
+  it("re-asks an empty email before it ever asks for a token", async () => {
+    const stream = captureStream();
+    const input = fakeInput();
+    const ui = new Ui({ stream, input, color: false, interactive: true });
+    const store = fakeStore();
+
+    const run = authLoginCommand({ ui, store, verify: accepts, readBack: () => port(none) });
+    await answer(input, [BASE_URL, "", EMAIL, SECRET]);
+
+    expect(await run).toBe(0);
+    expect(store.held?.email).toBe(EMAIL);
+    // The token line was consumed by the token prompt, not eaten by the email
+    // step - which is the whole point of validating email where it is asked.
+    expect(store.held?.apiToken).toBe(SECRET);
+    expect(stream.text()).toMatch(/email is required/);
+  });
+
+  it("gives up on an empty email without asking for a token", async () => {
+    const stream = captureStream();
+    const input = fakeInput();
+    const ui = new Ui({ stream, input, color: false, interactive: true });
+    const store = fakeStore();
+
+    const run = authLoginCommand({ ui, store, verify: accepts, readBack: () => port(none) });
+    await answer(input, [BASE_URL, "", "", ""]);
+
+    expect(await run).toBe(1);
+    expect(store.writes).toBe(0);
+    // Asking for a secret only to reject the line before it is the behaviour
+    // this replaces.
+    expect(stream.text()).not.toContain("Atlassian API token");
   });
 
   it("warns when an exported variable shadows part of what was stored", async () => {

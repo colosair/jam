@@ -129,6 +129,13 @@ itself. Nobody should have to know what an origin is, or delete a path by hand,
 to log in. A URL that cannot be parsed is refused locally, before Jira is
 contacted, and says to paste a page URL rather than naming a scheme.
 
+**A mistyped answer costs that answer, not the command.** A URL that will not
+parse, or a blank email, re-asks the step it belongs to - up to three times,
+so a pipe that has stopped producing usable answers still ends. The email is
+checked where it is asked, never after a token has been typed: asking for a
+secret in order to reject the line before it wastes the one answer nobody
+wants to repeat.
+
 **Secrets are never echoed.** A token prompt prints nothing at all as you
 type — no characters, no bullets, no length. Backspace and Delete work in every
 form a terminal sends them, and every exit path restores raw mode and removes
