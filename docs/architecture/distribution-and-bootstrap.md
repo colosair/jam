@@ -215,21 +215,48 @@ unwired.
 A Jira project key comes from an explicit source or not at all:
 
 ```text
-existing project.yaml  →  --project KEY  →  JAM_PROJECT_KEY  →  exact preset match
-                                                             →  otherwise: selection required
+existing project.yaml  →  --project KEY  →  JAM_PROJECT_KEY  →  personal binding
+                                          →  exact preset match (legacy)
+                                          →  otherwise: selection required
 ```
+
+What someone typed for this run beats what a shell exported, which beats what
+was recorded some time ago. A committed `project.yaml` still wins over all of
+them: it is the team's statement about the repository, and a personal note must
+not override it silently. When the two disagree, the file wins and JAM says so
+rather than deleting either.
 
 JAM never infers a key from a repository name, a directory name, or similarity
 to a Jira project's title. This holds identically for agents — automation gets
 the same refusal a person does, plus the project list so its user can choose.
 
-## Project-shared vs. user-local
+## Personal and team scope
 
-| Shared, committed | Local to a user, never committed |
+Personal is the default. `jam setup` records the binding for this user and
+registers JAM with this machine's coding agents through their own CLIs; the
+repository is left byte-identical. `jam setup --shared` is explicit team
+adoption and writes the two project files. Discovery is allowed; adoption is
+never inferred.
+
+A workspace is identified by its canonical `origin` remote plus its offset
+inside the repository - never by a raw path - so two clones share a binding, a
+monorepo's packages do not collide, and a moved folder keeps its binding. A
+remote's `user:token@` is stripped before the identity is formed: nothing that
+looks like a credential reaches `~/.jam/projects.yaml`.
+
+| Shared, committed (`--shared` only) | Local to a user, never committed |
 |---|---|
 | `.mcp.json` (launcher entry) | Runtime mode and development source path |
 | `.jira-agent/project.yaml` (project key, field policy) | Jira credentials |
 | Required JAM version *(planned, D11)* | OS secret-store state, npm cache |
+| | `~/.jam/projects.yaml` (workspace → Jira project) |
+| | Host MCP registration (`~/.claude.json`, `~/.codex/config.toml`) |
+
+JAM does not parse or rewrite a host's own config file. Registering means
+running that host's command - `claude mcp add-json jam … -s user`,
+`codex mcp add jam -- …` - and a host JAM cannot reach is reported with the
+command to run by hand, never assumed. That runs in apply, never in plan: the
+argv is decided when the plan is built and executed verbatim afterwards.
 
 Consequences that follow directly:
 

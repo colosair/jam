@@ -136,9 +136,10 @@ Finish with `jam doctor --json`.
 ```text
 jam serve                    Run the MCP server over stdio (what Claude Code / Codex launch)
 jam doctor                   Diagnose config, credentials and Jira connectivity
-jam setup [--project KEY] [--migrate]
-                             Wire up this project and verify (--migrate rewrites a
-                             legacy jam entry, only if its target resolves)
+jam setup [--project KEY] [--shared] [--migrate]
+                             Wire up JAM and verify. Personal by default; --shared
+                             writes the project files for the team (--migrate
+                             rewrites a legacy jam entry, only if its target resolves)
 jam runtime                  Show which JAM build this machine runs
 jam runtime use package | development <path>
                              Change it (writes ~/.jam/config.yaml only, never a project)
@@ -168,7 +169,28 @@ connectivity checks.
 
 ## What gets written
 
-`jam setup` produces two files in the project, and nothing else:
+**By default, nothing in the repository.** `jam setup` is personal: it records
+which Jira project this workspace belongs to in your own
+`~/.jam/projects.yaml`, and registers JAM with the coding agents on this
+machine through their own CLIs (`claude mcp add-json … -s user`,
+`codex mcp add …`). The repository is left byte-identical — no `.jira-agent/`,
+no `.mcp.json`, no `.gitignore` edit. You can use JAM in a repository you do
+not own, or have not decided about yet.
+
+A workspace is identified by its canonical `origin` remote, not by its path, so
+two clones of one repository share a binding and a folder you rename keeps it.
+
+```yaml
+# ~/.jam/projects.yaml
+version: 1
+
+bindings:
+  - workspace: "git:github.com/acme/web"
+    key: WEB
+```
+
+**`jam setup --shared` is how a team adopts JAM.** That writes the two project
+files below and nothing else. Discovery is allowed; adoption is asked for.
 
 `.mcp.json` — goes through the launcher, so it names no machine-specific path
 and is safe to commit:

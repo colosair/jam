@@ -67,14 +67,21 @@ jam setup apply --non-interactive --json    # execute it
 jam doctor --json                           # verify
 ```
 
+These are personal by default: they record the binding in the user's
+`~/.jam/projects.yaml` and register JAM with this machine's coding agents,
+leaving the repository byte-identical. Add `--shared` only when the user has
+asked to adopt JAM for the team — that is what writes `.jira-agent/project.yaml`
+and `.mcp.json` into the repository. Never add it on your own initiative.
+
 `npx --yes @jam-mcp/bootstrap@1.0.0 setup --agent` does all three in one shot
 when nothing is installed yet. Each returns a single JSON document with a
 stable status code — branch on the code, never on prose.
 
 Never: copy JAM source into the project, `npm link` for consumer setup, modify
 `PATH` or user environment variables, write credentials into a repository file,
-guess a Jira project key, overwrite unrelated `.mcp.json` entries, or assemble
-`project.yaml` / `.mcp.json` by hand.
+guess a Jira project key, overwrite unrelated `.mcp.json` entries, assemble
+`project.yaml` / `.mcp.json` / `~/.jam/projects.yaml` by hand, edit a host's own
+MCP config file, or pass `--shared` without being asked to.
 
 Stop only for `JAM_PROJECT_SELECTION_REQUIRED` (ask which Jira project) and
 `JAM_AUTH_REQUIRED` (tell the user to run `jam auth login` themselves). Finish

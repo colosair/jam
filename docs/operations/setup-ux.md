@@ -266,6 +266,40 @@ Project: PROJECT
 Result: ready
 ```
 
+## Scope
+
+**Setup is personal until someone says otherwise.** `jam setup` records which
+Jira project this workspace belongs to in the user's own
+`~/.jam/projects.yaml`, registers JAM with the coding agents on this machine,
+and leaves the repository byte-identical. Nothing about "try JAM on this repo"
+should commit a decision on a team's behalf.
+
+`jam setup --shared` is the team's version, and writes exactly what setup
+always wrote: `.jira-agent/project.yaml` and `.mcp.json`. Discovery is allowed;
+adoption is asked for.
+
+```text
+✓ Workspace bound            WEB
+  Recorded for you only - the repository was not touched.
+✓ Registered with            claude-code
+! codex was not reachable, so JAM was not registered with it.
+› If you use it, run: codex mcp add jam -- npx --yes @jam-mcp/launcher@1.0.0 serve
+```
+
+**A rebind names what it replaces.** `jam setup --project OTHER` on a workspace
+that is already bound previews `WEB → OTHER` before it writes, so nobody
+discovers the change afterwards.
+
+**A committed project key wins, and the disagreement is reported.** If the team
+adopted JAM after you bound the repo personally, `.jira-agent/project.yaml` is
+the answer and JAM says so - it does not silently ignore one of them, and it
+does not delete your binding for you.
+
+**A host is never guessed at.** JAM registers itself by running the host's own
+command, so it never edits `~/.claude.json` or `~/.codex/config.toml`. A host
+that cannot be reached is reported with the command to run by hand, and nothing
+is claimed to have happened.
+
 ## Terminal acceptance
 
 Unit tests drive a pipe, and a pipe has no IME, no character width and no
