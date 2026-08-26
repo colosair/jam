@@ -2,6 +2,24 @@
   "name": "@jam-mcp/launcher",
   "version": "1.0.0",
   "description": "JAM launcher - resolves which JAM runtime to run and dispatches to it",
+  "keywords": [
+    "jira",
+    "mcp",
+    "model-context-protocol",
+    "claude-code",
+    "codex",
+    "launcher"
+  ],
+  "homepage": "https://github.com/colosair/jam#readme",
+  "bugs": {
+    "url": "https://github.com/colosair/jam/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/colosair/jam.git",
+    "directory": "packages/launcher"
+  },
+  "author": "colosair (https://github.com/colosair)",
   "type": "module",
   "bin": {
     "jam-launcher": "dist/cli.js"
@@ -42,5 +60,9 @@
     "typescript": "^5.9.0",
     "vitest": "^4.1.11"
   },
-  "license": "UNLICENSED"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

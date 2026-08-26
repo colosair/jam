@@ -2,6 +2,24 @@
   "name": "@jam-mcp/bootstrap",
   "version": "1.0.0",
   "description": "Zero-install entry point for JAM (Jira Agent MCP) - first-run setup for humans and coding agents",
+  "keywords": [
+    "jira",
+    "mcp",
+    "model-context-protocol",
+    "claude-code",
+    "codex",
+    "setup"
+  ],
+  "homepage": "https://github.com/colosair/jam#readme",
+  "bugs": {
+    "url": "https://github.com/colosair/jam/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/colosair/jam.git",
+    "directory": "packages/bootstrap"
+  },
+  "author": "colosair (https://github.com/colosair)",
   "type": "module",
   "bin": {
     "jam-bootstrap": "dist/cli.js"
@@ -25,5 +43,9 @@
     "@types/node": "^24.0.0",
     "typescript": "^5.9.0"
   },
-  "license": "UNLICENSED"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

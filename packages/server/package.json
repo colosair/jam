@@ -2,6 +2,24 @@
   "name": "@jam-mcp/server",
   "version": "1.0.0",
   "description": "JAM (Jira Agent MCP) - agent-facing Jira access layer: MCP server, setup core, and CLI",
+  "keywords": [
+    "jira",
+    "mcp",
+    "model-context-protocol",
+    "claude-code",
+    "codex",
+    "jira-api"
+  ],
+  "homepage": "https://github.com/colosair/jam#readme",
+  "bugs": {
+    "url": "https://github.com/colosair/jam/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/colosair/jam.git",
+    "directory": "packages/server"
+  },
+  "author": "colosair (https://github.com/colosair)",
   "type": "module",
   "bin": {
     "jam": "dist/index.js"
@@ -33,7 +51,7 @@
     "typescript": "^5.9.0",
     "vitest": "^4.1.11"
   },
-  "license": "UNLICENSED",
+  "license": "MIT",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -43,5 +61,9 @@
       "types": "./dist/cli-entry.d.ts",
       "default": "./dist/cli-entry.js"
     }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }

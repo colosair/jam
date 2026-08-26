@@ -1,6 +1,6 @@
 # @jam-mcp/bootstrap
 
-The zero-install way into [JAM (Jira Agent MCP)](https://github.com/colosair/jira-agent-mcp).
+The zero-install way into [JAM (Jira Agent MCP)](https://github.com/colosair/jam).
 
 This package exists so the *first* command a person or a coding agent runs needs
 nothing installed beforehand:
@@ -34,13 +34,7 @@ The three packages divide up like this:
 After first run you don't need this package again — day to day, the coding agent
 launches the launcher, and you use the `jam` CLI.
 
-## Status
-
-JAM is not published to npm yet, so the `npx` commands above do not resolve from
-the registry today. Until publication, see
-[Development](https://github.com/colosair/jira-agent-mcp#development).
-
 ## More
 
-- [Repository README](https://github.com/colosair/jira-agent-mcp#readme)
-- [Distribution and bootstrap](https://github.com/colosair/jira-agent-mcp/blob/main/docs/architecture/distribution-and-bootstrap.md)
+- [Repository README](https://github.com/colosair/jam#readme)
+- [Distribution and bootstrap](https://github.com/colosair/jam/blob/main/docs/architecture/distribution-and-bootstrap.md)

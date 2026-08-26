@@ -1,6 +1,6 @@
 # @jam-mcp/launcher
 
-The entry point a coding agent registers for [JAM (Jira Agent MCP)](https://github.com/colosair/jira-agent-mcp).
+The entry point a coding agent registers for [JAM (Jira Agent MCP)](https://github.com/colosair/jam).
 
 This package is deliberately thin. It resolves *which* JAM build this machine
 should run, then dispatches to it — it holds no Jira logic of its own. That
@@ -38,14 +38,7 @@ Prefer the launcher over invoking `@jam-mcp/server` directly. Calling the
 server by hand pins one machine to one build and bypasses the runtime config
 that `jam runtime` manages.
 
-## Status
-
-JAM is not published to npm yet, so the `npx --yes @jam-mcp/launcher@1.0.0`
-command above does not resolve from the registry today. Until publication, use
-the development runtime against a local checkout — see the
-[repository README](https://github.com/colosair/jira-agent-mcp#development).
-
 ## More
 
-- [Repository README](https://github.com/colosair/jira-agent-mcp#readme)
-- [Distribution and bootstrap](https://github.com/colosair/jira-agent-mcp/blob/main/docs/architecture/distribution-and-bootstrap.md)
+- [Repository README](https://github.com/colosair/jam#readme)
+- [Distribution and bootstrap](https://github.com/colosair/jam/blob/main/docs/architecture/distribution-and-bootstrap.md)

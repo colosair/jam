@@ -61,5 +61,5 @@ diagnostics go to `stderr`.
 
 ## More
 
-- [Repository README](https://github.com/colosair/jira-agent-mcp#readme)
-- [JAM design of record](https://github.com/colosair/jira-agent-mcp/blob/main/docs/architecture/jira-agent-mcp-design.md)
+- [Repository README](https://github.com/colosair/jam#readme)
+- [JAM design of record](https://github.com/colosair/jam/blob/main/docs/architecture/jira-agent-mcp-design.md)
