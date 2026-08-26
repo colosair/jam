@@ -191,7 +191,7 @@ async function chooseRuntime(ui: Ui, options: WizardOptions): Promise<void> {
       {
         value: "package",
         label: "Use JAM",
-        hint: "Run the project-pinned package. Recommended for most users.",
+        hint: "Run the published JAM release. Recommended for most users.",
       },
       { value: "development", label: "Develop JAM", hint: "Run a local source checkout." },
     ],

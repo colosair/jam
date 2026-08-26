@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFil
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
+import { SERVER_VERSION } from "@jam-mcp/launcher";
 import { LAUNCHER_PACKAGE_SPEC } from "../../src/bootstrap/mcp-config-merger.js";
 import {
   checkMigrationTarget,
@@ -572,5 +573,72 @@ describe("checkMigrationTarget", () => {
     const target = checkMigrationTarget("pkg@1.0.0", run({ stderr: "npm error code ENOTFOUND\n" }));
 
     expect(target).toMatchObject({ available: false, reason: "unverifiable" });
+  });
+});
+
+/**
+ * What a plan tells a machine to run next.
+ *
+ * A plan is read by agents on machines that have just met JAM. `jam` is an
+ * optional convenience there, not a given, and the launcher cannot help either
+ * until a runtime is configured - so every executable command a plan emits has
+ * to go through bootstrap. This is easy to regress: on a maintainer's laptop
+ * `jam setup --project X` works perfectly.
+ */
+describe("nextAction is executable on a machine with nothing installed", () => {
+  function homeWithoutRuntime(): string {
+    const home = tmp("jam-home-");
+    mkdirSync(join(home, ".jam"), { recursive: true });
+    return home;
+  }
+
+  it("names bootstrap, not a bare `jam`, when a project must be chosen", () => {
+    const plan = computeSetupPlan(detect(bareProject(), homeWithRuntime(), configuredCredentials));
+
+    expect(plan.code).toBe("JAM_PROJECT_SELECTION_REQUIRED");
+    expect(plan.nextAction?.command).toBe(
+      `npx --yes @jam-mcp/bootstrap@${SERVER_VERSION} setup --project <KEY>`,
+    );
+  });
+
+  it("names bootstrap when the runtime itself is what is missing", () => {
+    const root = bareProject();
+    const plan = computeSetupPlan(detect(root, homeWithoutRuntime(), configuredCredentials), {
+      explicitKey: "PROJECT",
+    });
+
+    expect(plan.code).toBe("JAM_RUNTIME_CONFIG_MISSING");
+    expect(plan.nextAction?.command).toBe(
+      `npx --yes @jam-mcp/bootstrap@${SERVER_VERSION} runtime use package`,
+    );
+  });
+
+  it("offers no command at all for the one step a person must take themselves", () => {
+    const plan = computeSetupPlan(detect(bareProject(), homeWithRuntime(), missingCredentials), {
+      explicitKey: "PROJECT",
+    });
+
+    // `jam auth login` is interactive by design; handing an agent a command
+    // here would invite it to run one on someone's behalf.
+    expect(plan.nextAction).toEqual({ type: "authenticate" });
+  });
+
+  it("emits no bare `jam` command from any plan", () => {
+    const plans = [
+      computeSetupPlan(detect(bareProject(), homeWithRuntime(), configuredCredentials)),
+      computeSetupPlan(detect(bareProject(), homeWithoutRuntime(), configuredCredentials), {
+        explicitKey: "PROJECT",
+      }),
+      computeSetupPlan(detect(bareProject(), homeWithRuntime(), missingCredentials), {
+        explicitKey: "PROJECT",
+      }),
+    ];
+
+    for (const plan of plans) {
+      const command = plan.nextAction?.command;
+      if (command === undefined) continue;
+      expect(command.startsWith("jam ")).toBe(false);
+      expect(command).toMatch(/^npx --yes @jam-mcp\/\S+@\d+\.\d+\.\d+ /);
+    }
   });
 });

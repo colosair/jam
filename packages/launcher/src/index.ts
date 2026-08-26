@@ -16,4 +16,13 @@ export {
 } from "./runtime-resolver.js";
 export { resolvePackageRuntime } from "./package-runtime.js";
 export { resolveDevelopmentRuntime, SERVER_ENTRY_RELATIVE } from "./development-runtime.js";
-export { SERVER_PACKAGE, SERVER_VERSION, SERVER_PACKAGE_SPEC } from "./release.js";
+export {
+  SERVER_PACKAGE,
+  SERVER_VERSION,
+  SERVER_PACKAGE_SPEC,
+  LAUNCHER_PACKAGE,
+  LAUNCHER_PACKAGE_SPEC,
+  BOOTSTRAP_PACKAGE,
+  BOOTSTRAP_PACKAGE_SPEC,
+  portableBootstrapCommand,
+} from "./release.js";

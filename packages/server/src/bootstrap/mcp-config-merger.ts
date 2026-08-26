@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { SERVER_VERSION } from "@jam-mcp/launcher";
+import { LAUNCHER_PACKAGE_SPEC } from "@jam-mcp/launcher";
 
 /**
  * The canonical jam entry for a project's `.mcp.json`.
@@ -14,7 +14,7 @@ import { SERVER_VERSION } from "@jam-mcp/launcher";
  * Pinned to an exact version. A floating tag would silently change what a
  * teammate's editor launches.
  */
-export const LAUNCHER_PACKAGE_SPEC = `@jam-mcp/launcher@${SERVER_VERSION}`;
+export { LAUNCHER_PACKAGE_SPEC };
 
 export const JAM_MCP_ENTRY = {
   command: "npx",
@@ -111,12 +111,12 @@ export function writeJamMcpEntry(root: string, entry: unknown = JAM_MCP_ENTRY): 
 }
 
 /**
- * Merge a PATH-based JAM entry into `.mcp.json`, preserving everything else.
+ * Merge the launcher entry into `.mcp.json`, preserving everything else.
  *
- * Deliberately does NOT record an absolute path to this JAM checkout - that
- * would break the moment a teammate clones to a different location. `command:
- * "jam"` relies on `jam` being on PATH (see `jam setup`'s PATH check), which is
- * what keeps this file safe to commit and share.
+ * Deliberately records neither an absolute path to a JAM checkout nor a bare
+ * `jam` - the first breaks the moment a teammate clones somewhere else, and
+ * the second assumes an optional global install every teammate would have to
+ * have made. `npx` at an exact launcher version assumes only npm.
  */
 export function mergeMcpConfig(root: string): McpMergeResult {
   const path = join(root, ".mcp.json");

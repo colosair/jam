@@ -1,5 +1,6 @@
 import { spawn, type SpawnOptions } from "node:child_process";
 import { LauncherError } from "./errors.js";
+import { portableBootstrapCommand } from "./release.js";
 import type { ResolvedRuntime } from "./runtime-resolver.js";
 
 export type SpawnFn = (
@@ -62,7 +63,9 @@ export function dispatch(
         new LauncherError(
           runtime.mode === "package" ? "JAM_PACKAGE_RUNTIME_FAILED" : "JAM_DEVELOPMENT_SOURCE_INVALID",
           `Could not start the JAM ${runtime.mode} runtime (${command}): ${err.message}`,
-          runtime.mode === "package" ? undefined : "jam runtime use development <path>",
+          runtime.mode === "package"
+            ? undefined
+            : portableBootstrapCommand("runtime use development <path>"),
         ),
       );
     });

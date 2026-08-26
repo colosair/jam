@@ -126,16 +126,20 @@ process.stdout.write("\n@jam-mcp/server\n");
 {
   const { dir, home, work } = sandbox("server");
   // The launcher tarball goes in alongside it: these packages depend on each
-  // other by exact version, and nothing is on the registry yet to resolve
-  // that from. Post-publish npm does this part.
+  // other by exact version, and installing from tarballs gives npm nothing to
+  // resolve that from. A registry install does this part by itself.
+  //
+  // `jam-server`, not `jam`: `jam` is the launcher's, so that a global install
+  // of it dispatches through the user's runtime choice instead of pinning them
+  // to one build. The two names collided once; this is where that showed up.
   const bin = join(
     install(dir, home, [tarball("jam-mcp-launcher"), tarball("jam-mcp-server")]),
-    "jam",
+    "jam-server",
   );
 
   const help = runBin(bin, ["help"], { cwd: work, home });
   check("bin runs from the tarball install", help.code === 0, help.stderr.slice(0, 200));
-  check("help mentions the three MCP tools path", help.stdout.includes("jam serve"));
+  check("help mentions the three MCP tools path", help.stdout.includes("serve"));
 
   // No project config and no credentials in this sandbox, so doctor must fail
   // for those reasons - proving it read the sandbox and not the real machine.

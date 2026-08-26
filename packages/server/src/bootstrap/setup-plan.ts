@@ -5,6 +5,7 @@ import type { MigrationTarget } from "./migration-target.js";
 import { projectBindingsPath } from "./project-bindings.js";
 import { decideProjectKey, type BootstrapSource } from "./project-config-bootstrapper.js";
 import type { SetupState } from "./setup-state.js";
+import { portableBootstrapCommand } from "@jam-mcp/launcher";
 
 export type SetupStatus = "already_configured" | "ready_to_apply" | "user_action_required";
 
@@ -60,6 +61,14 @@ export type SetupPlan = {
   projects?: { key: string; name: string }[];
   /** Why a requested migration was refused, when status is JAM_MIGRATION_TARGET_UNAVAILABLE. */
   migrationTarget?: MigrationTarget;
+  /**
+   * What a person or an agent has to do next.
+   *
+   * `command` is executable on a machine with nothing installed and no runtime
+   * configured - so it is an `npx` bootstrap invocation, never a bare `jam`.
+   * A human interface is free to render the short form; this field is the one
+   * a script runs, and a script has no PATH to rely on.
+   */
   nextAction?: { type: "authenticate" | "select_project" | "configure_runtime"; command?: string };
   project?: { root: string; key?: string };
 };
@@ -133,7 +142,7 @@ export function computeSetupPlan(state: SetupState, options: PlanOptions = {}): 
       code: "JAM_PROJECT_SELECTION_REQUIRED",
       changes: [],
       requiresUserAction: true,
-      nextAction: { type: "select_project", command: "jam setup --project <KEY>" },
+      nextAction: { type: "select_project", command: portableBootstrapCommand("setup --project <KEY>") },
       project: { root: state.project.root },
     };
   }
@@ -219,7 +228,7 @@ function finish(
       code: "JAM_RUNTIME_CONFIG_MISSING",
       changes,
       requiresUserAction: true,
-      nextAction: { type: "configure_runtime", command: "jam runtime use package" },
+      nextAction: { type: "configure_runtime", command: portableBootstrapCommand("runtime use package") },
       project,
     };
   }

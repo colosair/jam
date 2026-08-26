@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { LauncherError } from "./errors.js";
+import { portableBootstrapCommand } from "./release.js";
 import type { ResolvedRuntime } from "./runtime-resolver.js";
 
 /** Where the server's built entry point lives inside a JAM checkout. */
@@ -43,10 +44,14 @@ export function resolveDevelopmentRuntime(source: string): ResolvedRuntime {
 
   const entry = join(root, SERVER_ENTRY_RELATIVE);
   if (!existsSync(entry)) {
+    // `--prefix` rather than `npm run build`: the launcher runs in the
+    // application's directory, not JAM's, so a bare build command would build
+    // whatever the user happens to be working on. Naming the checkout also
+    // avoids `cd ... && ...`, which cmd.exe does not accept.
     throw new LauncherError(
       "JAM_DEVELOPMENT_SOURCE_INVALID",
-      `JAM source at ${root} has not been built - ${SERVER_ENTRY_RELATIVE} is missing.`,
-      "npm run build",
+      `The configured JAM checkout has not been built: ${root} (${SERVER_ENTRY_RELATIVE} is missing).`,
+      `npm --prefix ${root} run build`,
     );
   }
 
@@ -68,9 +73,12 @@ function readVersion(manifestPath: string): string | undefined {
 }
 
 function invalid(message: string): LauncherError {
+  // Not `jam runtime use development`: a broken runtime config is exactly the
+  // state in which the launcher cannot dispatch, so the remedy has to be one
+  // that needs neither a configured runtime nor a global install.
   return new LauncherError(
     "JAM_DEVELOPMENT_SOURCE_INVALID",
     message,
-    "jam runtime use development <path>",
+    portableBootstrapCommand("runtime use development <path>"),
   );
 }

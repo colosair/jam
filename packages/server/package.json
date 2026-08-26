@@ -1,6 +1,6 @@
 {
   "name": "@jam-mcp/server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "JAM (Jira Agent MCP) - agent-facing Jira access layer: MCP server, setup core, and CLI",
   "keywords": [
     "jira",
@@ -22,7 +22,7 @@
   "author": "colosair (https://github.com/colosair)",
   "type": "module",
   "bin": {
-    "jam": "dist/index.js"
+    "jam-server": "dist/index.js"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -41,7 +41,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@jam-mcp/launcher": "1.0.0",
+    "@jam-mcp/launcher": "1.0.1",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"

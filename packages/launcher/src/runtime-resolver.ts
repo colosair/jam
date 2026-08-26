@@ -2,6 +2,7 @@ import { LauncherError } from "./errors.js";
 import { resolveDevelopmentRuntime } from "./development-runtime.js";
 import { resolvePackageRuntime } from "./package-runtime.js";
 import { readRuntimeConfig, type RuntimeConfig, type RuntimeMode } from "./runtime-config.js";
+import { portableBootstrapCommand } from "./release.js";
 
 export type ResolvedRuntime = {
   mode: RuntimeMode;
@@ -12,7 +13,7 @@ export type ResolvedRuntime = {
   };
 };
 
-export const BOOTSTRAP_INIT_COMMAND = "npx --yes @jam-mcp/bootstrap@1.0.0 init";
+export const BOOTSTRAP_INIT_COMMAND = portableBootstrapCommand("init");
 
 /**
  * Turn the user's runtime choice into an actual command to run.
