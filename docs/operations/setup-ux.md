@@ -327,11 +327,20 @@ deletes, Enter submits, Esc cancels.
 | Platform | Status |
 |---|---|
 | Windows Terminal | pending |
-| macOS Terminal | pending |
+| macOS Terminal | pass — 2026-08-26, every row above |
 | Linux | pending — no device |
 
 Record the outcome here rather than in a commit message: the next person to
 touch `ui.ts` needs to know which platforms were actually exercised.
+
+A pty covers all of it except IME composition. Driving `script -q /dev/null`
+with timed keystrokes gives readline a real terminal, so backspace over
+precomposed Hangul, cursor movement, paste, the `[offered]` fallback, the exit
+codes and the whole token step are all checkable without a person - and the
+same capture proves the token never echoed, because a sentinel typed into it
+appears nowhere in the transcript. What a pty cannot produce is an IME pre-edit
+buffer: "한글 조합 도중 Backspace" is composing state that only a real input
+method creates, so that one row stays a human check.
 
 ## Machine output
 
