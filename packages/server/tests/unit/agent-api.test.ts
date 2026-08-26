@@ -26,9 +26,15 @@ const noCredentials: CredentialPort = {
   describe: () => ({ hasToken: false, source: "none" }),
 };
 
-/** Every environment input a plan can read, pinned - JIRA_* and JAM_PROJECT_KEY alike. */
-const authenticated = () => ({ credentials: new FakeCredentials(), env: {} });
-const unauthenticated = () => ({ credentials: noCredentials, env: {} });
+/**
+ * Every environment input a plan can read, pinned - JIRA_*, JAM_PROJECT_KEY,
+ * the workspace remote, and the host CLIs. `noHosts` is what keeps a test run
+ * from registering JAM with the developer's own Claude Code or Codex.
+ */
+const noHosts = () => ({ status: null, failed: true });
+const pinned = { env: {}, git: () => undefined, runHost: noHosts };
+const authenticated = () => ({ credentials: new FakeCredentials(), ...pinned });
+const unauthenticated = () => ({ credentials: noCredentials, ...pinned });
 
 function tmp(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix));

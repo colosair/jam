@@ -2,6 +2,11 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { runHealthGate } from "../bootstrap/boot-health-gate.js";
+import {
+  describeHostCommand,
+  hostRegistration,
+  type HostRunner,
+} from "../bootstrap/host-mcp.js";
 import { listVisibleProjects } from "../bootstrap/jira-projects.js";
 import { computeSetupPlanWithPreflight } from "../bootstrap/migration-target.js";
 import { applySetupPlan } from "../bootstrap/setup-apply.js";
@@ -24,6 +29,8 @@ export type SetupOptions = {
   migrate?: boolean;
   /** Injected by tests to isolate ~/.jam. */
   home?: string;
+  /** Injected by tests so no test ever registers JAM with a real host. */
+  runHost?: HostRunner;
 };
 
 const line = (text: string) => process.stdout.write(`${text}\n`);
@@ -43,7 +50,15 @@ export async function setup(options: SetupOptions = {}): Promise<number> {
     if (installed !== 0) return installed;
   }
 
-  const state = detectSetupState({ cwd, ...(options.home ? { home: options.home } : {}) });
+  const state = detectSetupState({
+    cwd,
+    ...(options.home ? { home: options.home } : {}),
+    // Personal setup registers JAM with this machine's coding agents, so it
+    // has to know which of them exist. Doctor has no such need and does not
+    // pay for the probe.
+    probeHosts: !options.shared,
+    ...(options.runHost ? { runHost: options.runHost } : {}),
+  });
   const plan = computeSetupPlanWithPreflight(state, {
     ...(options.shared ? { shared: options.shared } : {}),
     ...(options.explicitKey ? { explicitKey: options.explicitKey } : {}),
@@ -63,10 +78,14 @@ export async function setup(options: SetupOptions = {}): Promise<number> {
   }
 
   reportApplied(
-    applySetupPlan(plan, options.home ? { home: options.home } : {}).applied,
+    applySetupPlan(plan, {
+      ...(options.home ? { home: options.home } : {}),
+      ...(options.runHost ? { runHost: options.runHost } : {}),
+    }).applied,
     plan,
   );
   reportBindingDisagreement(state);
+  reportUnreachableHosts(state);
 
   // The rewrite the user asked for is the thing that failed, so it is reported
   // before anything else - and reported as a stop, not a warning: continuing to
@@ -126,6 +145,10 @@ function reportApplied(applied: ReturnType<typeof applySetupPlan>["applied"], pl
       line("       Nothing was written to the repository. Use --shared to adopt JAM for the team.");
       continue;
     }
+    if (change.target === "host-mcp") {
+      line(`[OK]   ${change.host} - jam registered for this user`);
+      continue;
+    }
     if (change.target === "project-config") {
       line(`[OK]   ${change.path} created - project.key = ${change.key} (from ${change.keySource})`);
       continue;
@@ -153,6 +176,20 @@ function describeBlockingCode(plan: SetupPlan): string {
     return "Your ~/.jam/projects.yaml could not be read. Fix or remove it and re-run - JAM will not overwrite it.";
   }
   return "The project's .mcp.json is not valid JSON. Fix it and re-run - JAM will not overwrite it.";
+}
+
+/**
+ * A host JAM could not reach is reported, never guessed at: the command is
+ * printed so the person can run it, and nothing is claimed to have happened.
+ */
+function reportUnreachableHosts(state: SetupState): void {
+  for (const host of state.hosts) {
+    if (host.cliAvailable) continue;
+    const registration = hostRegistration(host.id);
+    if (!registration) continue;
+    line(`[WARN] ${host.id} was not reachable, so JAM was not registered with it.`);
+    line(`       If you use it, run: ${describeHostCommand(registration)}`);
+  }
 }
 
 /**

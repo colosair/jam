@@ -1,3 +1,4 @@
+import { defaultHostRunner, type HostRunner } from "./host-mcp.js";
 import { JAM_MCP_ENTRY, writeJamMcpEntry } from "./mcp-config-merger.js";
 import { writeProjectBinding } from "./project-bindings.js";
 import { writeBootstrapConfig } from "./project-config-bootstrapper.js";
@@ -18,6 +19,8 @@ export type ApplyOptions = {
   mcpEntry?: unknown;
   /** Injected by tests to isolate ~/.jam. */
   home?: string;
+  /** Injected by tests so no test ever registers JAM with a real host. */
+  runHost?: HostRunner;
 };
 
 /**
@@ -45,6 +48,20 @@ export function applySetupPlan(plan: SetupPlan, options: ApplyOptions = {}): App
       case "mcp-config": {
         if (!root) throw new Error("Cannot apply an mcp-config change without a project root.");
         writeJamMcpEntry(root, options.mcpEntry ?? JAM_MCP_ENTRY);
+        applied.push({ ...change, applied: true });
+        break;
+      }
+      case "host-mcp": {
+        // The argv came from the plan, so this runs what was previewed and
+        // decides nothing. A failure is that host's failure, reported with the
+        // command that produced it - never retried against another host.
+        const run = options.runHost ?? defaultHostRunner;
+        const result = run({ command: change.command, args: change.args });
+        if (result.failed || result.status !== 0) {
+          throw new Error(
+            `Registering JAM with ${change.host} failed: ${change.command} ${change.args.join(" ")}`,
+          );
+        }
         applied.push({ ...change, applied: true });
         break;
       }

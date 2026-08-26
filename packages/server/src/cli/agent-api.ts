@@ -10,6 +10,7 @@ import { detectSetupState, type SetupState } from "../bootstrap/setup-state.js";
 import { buildDeps } from "../deps.js";
 import { toJamError } from "../domain/errors.js";
 import type { CredentialPort } from "../ports/credentials.port.js";
+import type { HostRunner } from "../bootstrap/host-mcp.js";
 import type { GitRemoteFn } from "../bootstrap/workspace-identity.js";
 
 /**
@@ -40,6 +41,8 @@ export type AgentOptions = {
   migrationTarget?: MigrationTarget;
   /** Injected by tests so identity never depends on the checkout under test. */
   git?: GitRemoteFn;
+  /** Injected by tests so no test ever registers JAM with a real host. */
+  runHost?: HostRunner;
 };
 
 export function emitJson(payload: unknown): void {
@@ -52,6 +55,8 @@ function detect(options: AgentOptions): SetupState {
     ...(options.home ? { home: options.home } : {}),
     ...(options.credentials ? { credentials: options.credentials } : {}),
     ...(options.git ? { git: options.git } : {}),
+    probeHosts: !options.shared,
+    ...(options.runHost ? { runHost: options.runHost } : {}),
   });
 }
 
@@ -101,7 +106,10 @@ export async function setupApplyCommand(options: AgentOptions = {}): Promise<num
     return 1;
   }
 
-  const result = applySetupPlan(plan, options.home ? { home: options.home } : {});
+  const result = applySetupPlan(plan, {
+    ...(options.home ? { home: options.home } : {}),
+    ...(options.runHost ? { runHost: options.runHost } : {}),
+  });
   emitJson({ ...plan, status: applyStatus(plan), changesApplied: result.changesApplied });
   return plan.requiresUserAction ? 1 : 0;
 }
@@ -129,7 +137,10 @@ export async function setupAgentCommand(options: AgentOptions = {}): Promise<num
     return 1;
   }
 
-  const { changesApplied } = applySetupPlan(plan, options.home ? { home: options.home } : {});
+  const { changesApplied } = applySetupPlan(plan, {
+    ...(options.home ? { home: options.home } : {}),
+    ...(options.runHost ? { runHost: options.runHost } : {}),
+  });
 
   if (plan.requiresUserAction) {
     emitJson({ ...plan, changesApplied });

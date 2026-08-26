@@ -6,6 +6,7 @@ import {
 import { CompositeCredentialProvider } from "../adapters/credentials/composite.js";
 import { loadConfig } from "../config/load-config.js";
 import type { CredentialPort, CredentialSource } from "../ports/credentials.port.js";
+import { detectHosts, type HostRunner, type HostState } from "./host-mcp.js";
 import { inspectMcpConfig, isLegacyJamEntry, type McpInspection } from "./mcp-config-merger.js";
 import { inspectProjectBindings, type ProjectBinding } from "./project-bindings.js";
 import { resolveProjectRoot } from "./project-root-resolver.js";
@@ -52,6 +53,12 @@ export type SetupState = {
   credentials: CredentialState;
   project: ProjectState;
   mcp: McpInspection & { jamEntryIsLegacy: boolean };
+  /**
+   * The coding agents on this machine and whether each already knows about
+   * jam. Empty unless probing was asked for: it costs a process launch per
+   * host, which `jam doctor` has no reason to pay.
+   */
+  hosts: HostState[];
 };
 
 export type DetectOptions = {
@@ -61,6 +68,10 @@ export type DetectOptions = {
   credentials?: CredentialPort;
   /** Injected by tests so identity never depends on the checkout under test. */
   git?: GitRemoteFn;
+  /** Probe the host CLIs. Only the setup paths need this. */
+  probeHosts?: boolean;
+  /** Injected by tests so no test ever reaches a real host CLI. */
+  runHost?: HostRunner;
 };
 
 /**
@@ -88,6 +99,7 @@ export function detectSetupState(options: DetectOptions = {}): SetupState {
     credentials: detectCredentials(options.credentials ?? new CompositeCredentialProvider()),
     project: { ...detectProject(located), ...(binding ? { binding } : {}) },
     mcp: detectMcp(located.root),
+    hosts: options.probeHosts ? detectHosts(options.runHost) : [],
   };
 }
 

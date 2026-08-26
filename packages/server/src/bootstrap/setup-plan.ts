@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { CONFIG_RELATIVE_PATH } from "../config/load-config.js";
+import { hostRegistration, type HostId } from "./host-mcp.js";
 import type { MigrationTarget } from "./migration-target.js";
 import { projectBindingsPath } from "./project-bindings.js";
 import { decideProjectKey, type BootstrapSource } from "./project-config-bootstrapper.js";
@@ -36,6 +37,18 @@ export type SetupChange =
       keySource: BootstrapSource;
       /** Present on a rebind, so the preview shows what is being replaced. */
       previousKey?: string;
+    }
+  | {
+      type: "create";
+      target: "host-mcp";
+      host: HostId;
+      /**
+       * The exact argv apply will run, decided here and never recomputed -
+       * so `plan --json` shows what is about to happen, and running a host's
+       * CLI stays on the apply side of the line.
+       */
+      command: string;
+      args: string[];
     };
 
 export type SetupPlan = {
@@ -141,6 +154,7 @@ export function computeSetupPlan(state: SetupState, options: PlanOptions = {}): 
       };
     }
     if (bindingChange) changes.push(bindingChange);
+    changes.push(...planHostChanges(state));
     return finish(changes, state, project);
   }
 
@@ -216,6 +230,32 @@ function finish(
     requiresUserAction: false,
     project,
   };
+}
+
+/**
+ * Register JAM with each coding agent that can be reached and does not have
+ * it yet.
+ *
+ * A host whose CLI is missing gets no change at all: JAM will not guess at
+ * another program's config file, and a half-wired host reported as done is
+ * worse than one the user is told about. The caller prints the command for
+ * those.
+ */
+function planHostChanges(state: SetupState): SetupChange[] {
+  const changes: SetupChange[] = [];
+  for (const host of state.hosts) {
+    if (!host.cliAvailable || host.hasJamEntry) continue;
+    const registration = hostRegistration(host.id);
+    if (!registration) continue;
+    changes.push({
+      type: "create",
+      target: "host-mcp",
+      host: host.id,
+      command: registration.command,
+      args: registration.args,
+    });
+  }
+  return changes;
 }
 
 /**

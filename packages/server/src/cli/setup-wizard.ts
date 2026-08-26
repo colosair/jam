@@ -15,6 +15,7 @@ import { toJamError } from "../domain/errors.js";
 import type { CredentialPort } from "../ports/credentials.port.js";
 import type { JiraReadPort } from "../ports/jira-read.port.js";
 import type { AuthOptions } from "./auth.js";
+import type { HostRunner } from "../bootstrap/host-mcp.js";
 import { CancelledError, reportPromptError, Ui } from "./ui.js";
 
 export type WizardOptions = {
@@ -23,6 +24,8 @@ export type WizardOptions = {
   explicitKey?: string;
   /** `--shared`: adopt JAM for the team by writing into the repository. */
   shared?: boolean;
+  /** Injected by tests so no test ever registers JAM with a real host. */
+  runHost?: HostRunner;
   migrate?: boolean;
   ui?: Ui;
   /**
@@ -143,7 +146,10 @@ async function runStatusMenu(
       return await authLoginCommand({ ui, ...options.auth });
     case "repair": {
       const plan = computeSetupPlanWithPreflight(state, planOptions(options), probe(ui));
-      const applied = applySetupPlan(plan, options.home ? { home: options.home } : {});
+      const applied = applySetupPlan(plan, {
+      ...(options.home ? { home: options.home } : {}),
+      ...(options.runHost ? { runHost: options.runHost } : {}),
+    });
       ui.line();
       if (applied.changesApplied) ui.success("Project wiring repaired");
       else ui.success("Nothing to repair");
@@ -283,7 +289,10 @@ async function wireProject(ui: Ui, state: SetupState, options: WizardOptions): P
   if (plan.changes.length === 0) {
     ui.success("Project already wired", state.project.key ?? "");
   } else {
-    for (const change of applySetupPlan(plan, options.home ? { home: options.home } : {})
+    for (const change of applySetupPlan(plan, {
+      ...(options.home ? { home: options.home } : {}),
+      ...(options.runHost ? { runHost: options.runHost } : {}),
+    })
       .applied) {
       if (change.target === "personal-binding") {
         ui.success(
@@ -291,6 +300,8 @@ async function wireProject(ui: Ui, state: SetupState, options: WizardOptions): P
           change.previousKey ? `${change.previousKey} → ${change.key}` : change.key,
         );
         ui.line("  Recorded for you only - the repository was not touched.");
+      } else if (change.target === "host-mcp") {
+        ui.success("Registered with", change.host);
       } else if (change.target === "project-config") {
         ui.success("Project configured", `${change.key} · from ${change.keySource}`);
       } else if (change.type === "merge") {
@@ -415,6 +426,8 @@ function detectOptions(options: WizardOptions, cwd?: string) {
   return {
     cwd: cwd ?? options.cwd ?? process.cwd(),
     ...(options.home ? { home: options.home } : {}),
+    probeHosts: !options.shared,
+    ...(options.runHost ? { runHost: options.runHost } : {}),
     ...(options.credentials ? { credentials: options.credentials } : {}),
   };
 }

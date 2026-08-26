@@ -109,6 +109,8 @@ function options(over: Partial<WizardOptions> = {}): WizardOptions {
     home,
     explicitKey: "PROJECT",
     env: {},
+    // Nothing here may reach a real host CLI or a real git remote.
+    runHost: () => ({ status: null, failed: true }),
     jira: new FakeJira({ pages: [{ issues: [], responseBytes: 0 }] }),
     ...over,
   };
