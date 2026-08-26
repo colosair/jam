@@ -116,6 +116,20 @@ export function listsJamEntry(stdout: string): boolean {
  * something to refuse rather than something to guess.
  */
 export function detectHosts(run: HostRunner = defaultHostRunner): HostState[] {
+  // The wizard re-detects after each step, and Claude Code health-checks every
+  // configured server while listing - seconds each time. The answer cannot
+  // change inside one command, so it is asked once. Only the real runner is
+  // cached; an injected one is a test, and must always be called.
+  if (run === defaultHostRunner && cachedHosts) return cachedHosts;
+
+  const probed = probeHosts(run);
+  if (run === defaultHostRunner) cachedHosts = probed;
+  return probed;
+}
+
+let cachedHosts: HostState[] | undefined;
+
+function probeHosts(run: HostRunner): HostState[] {
   return ADAPTERS.map((adapter) => {
     const result = run(adapter.probe);
     if (result.failed || result.status !== 0) {

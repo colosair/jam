@@ -217,6 +217,8 @@ describe("wizard status menu", () => {
       env: {},
       credentials,
       jira: new FakeJira(),
+      // Without this the wizard probes the real Claude Code and Codex CLIs.
+      runHost: () => ({ status: null, failed: true, stdout: "" }),
       ui: new Ui({ stream, input, color: false, interactive: true }),
       auth: {
         store,
