@@ -52,6 +52,45 @@ describe("tool contract", () => {
     }
   });
 
+  it("states the evidence boundary in every tool description", async () => {
+    const { tools } = await client.listTools();
+
+    // An agent reads the description before it reads a result. If only
+    // jira_full says what was not evaluated, the other two invite exactly the
+    // conclusion JAM cannot support.
+    for (const tool of tools) {
+      expect(tool.description).toContain("Repository and external sources are not evaluated.");
+    }
+  });
+
+  it("carries the evidence boundary on every result", async () => {
+    const results = [
+      payload(
+        await client.callTool({ name: "jira_search", arguments: { jql: "project = PROJECT" } }),
+      ),
+      payload(
+        await client.callTool({ name: "jira_context", arguments: { issueKeys: ["PROJECT-97"] } }),
+      ),
+      payload(
+        await client.callTool({ name: "jira_full", arguments: { issueKeys: ["PROJECT-97"] } }),
+      ),
+    ];
+
+    for (const result of results) {
+      expect(result.meta).toMatchObject({
+        source: "jira",
+        provenance: "live",
+        evidenceScope: "jira-records-only",
+      });
+      // Stable codes, so a consumer can branch instead of matching prose.
+      expect(result.meta.limitations).toEqual([
+        "REPOSITORY_NOT_EVALUATED",
+        "EXTERNAL_SOURCES_NOT_EVALUATED",
+        "NON_JIRA_DEPENDENCIES_NOT_EVALUATED",
+      ]);
+    }
+  });
+
   it("declares the fixed input shapes", async () => {
     const { tools } = await client.listTools();
     const byName = Object.fromEntries(tools.map((t) => [t.name, t.inputSchema]));
