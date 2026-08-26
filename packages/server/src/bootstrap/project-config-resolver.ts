@@ -2,8 +2,10 @@ import { resolve } from "node:path";
 import { loadConfig } from "../config/load-config.js";
 import { ProjectConfigSchema, type ProjectConfig } from "../config/schema.js";
 import { JamError } from "../domain/errors.js";
+import { findProjectBinding } from "./project-bindings.js";
 import { decideProjectKey, type BootstrapSource } from "./project-config-bootstrapper.js";
 import { resolveProjectRoot } from "./project-root-resolver.js";
+import { workspaceIdentity, type GitRemoteFn } from "./workspace-identity.js";
 
 export type ResolvedProjectConfig = {
   config: ProjectConfig;
@@ -30,6 +32,10 @@ export type ResolveConfigOptions = {
   env?: NodeJS.ProcessEnv;
   /** Injected by tests so a decision never reads the developer's own presets. */
   presetsPath?: string;
+  /** Injected by tests to isolate `~/.jam`. */
+  home?: string;
+  /** Injected by tests so identity never depends on the checkout under test. */
+  git?: GitRemoteFn;
 };
 
 /**
@@ -46,7 +52,7 @@ export type ResolveConfigOptions = {
  */
 export function resolveProjectConfig(options: ResolveConfigOptions = {}): ResolvedProjectConfig {
   const cwd = resolve(options.cwd ?? process.cwd());
-  const { root, hasConfig } = resolveProjectRoot(cwd);
+  const { root, hasConfig, gitRoot } = resolveProjectRoot(cwd);
 
   if (hasConfig) {
     const loaded = loadConfig(root);
@@ -58,9 +64,20 @@ export function resolveProjectConfig(options: ResolveConfigOptions = {}): Resolv
     return { config: loaded.config, configPath: loaded.path, root };
   }
 
+  // Read only: a personal binding is consulted here and written nowhere, so
+  // starting a server leaves the user's own files alone as well as the repo's.
+  const bindingKey = findProjectBinding(
+    workspaceIdentity(root, {
+      ...(gitRoot ? { gitRoot } : {}),
+      ...(options.git ? { git: options.git } : {}),
+    }),
+    options.home,
+  )?.key;
+
   const decision = decideProjectKey(root, {
     ...(options.explicitKey ? { explicitKey: options.explicitKey } : {}),
     ...(options.env ? { env: options.env } : {}),
+    ...(bindingKey ? { bindingKey } : {}),
     ...(options.presetsPath ? { presetsPath: options.presetsPath } : {}),
   });
   if (!decision) {

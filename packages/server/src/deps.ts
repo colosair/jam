@@ -2,6 +2,7 @@ import { NoopCache } from "./adapters/cache/noop-cache.js";
 import { CompositeCredentialProvider } from "./adapters/credentials/composite.js";
 import { ConsoleTelemetry } from "./adapters/telemetry/console-telemetry.js";
 import type { BootstrapSource } from "./bootstrap/project-config-bootstrapper.js";
+import type { GitRemoteFn } from "./bootstrap/workspace-identity.js";
 import { resolveProjectConfig } from "./bootstrap/project-config-resolver.js";
 import type { ProjectConfig } from "./config/schema.js";
 import type { CachePort } from "./ports/cache.port.js";
@@ -38,6 +39,10 @@ export type BuildDepsOptions = {
   env?: NodeJS.ProcessEnv;
   /** Injected by tests so a decision never reads the developer's own presets. */
   presetsPath?: string;
+  /** Injected by tests to isolate `~/.jam`. */
+  home?: string;
+  /** Injected by tests so identity never depends on the checkout under test. */
+  git?: GitRemoteFn;
 };
 
 /**
@@ -55,6 +60,8 @@ export async function buildDeps(options: BuildDepsOptions = {}): Promise<JamDeps
     explicitKey: options.explicitKey,
     ...(options.env ? { env: options.env } : {}),
     ...(options.presetsPath ? { presetsPath: options.presetsPath } : {}),
+    ...(options.home ? { home: options.home } : {}),
+    ...(options.git ? { git: options.git } : {}),
   });
   const credentials = options.credentials ?? new CompositeCredentialProvider();
   const telemetry = new ConsoleTelemetry(resolved.config.telemetry.enabled);

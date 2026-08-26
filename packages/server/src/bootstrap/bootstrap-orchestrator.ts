@@ -8,7 +8,7 @@ export type BootstrapResult = {
 
 export type BootstrapForServeOptions = Pick<
   BuildDepsOptions,
-  "cwd" | "jira" | "credentials" | "env" | "presetsPath"
+  "cwd" | "jira" | "credentials" | "env" | "presetsPath" | "home" | "git"
 >;
 
 /**

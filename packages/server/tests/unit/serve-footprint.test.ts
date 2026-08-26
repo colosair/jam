@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { bootstrapForServe } from "../../src/bootstrap/bootstrap-orchestrator.js";
+import { writeProjectBinding } from "../../src/bootstrap/project-bindings.js";
 import { serve } from "../../src/cli/serve.js";
 import type { CredentialPort } from "../../src/ports/credentials.port.js";
 import { FakeJira, snapshot } from "../helpers.js";
@@ -42,7 +43,12 @@ function bareRepo(): string {
  */
 async function runServe(
   root: string,
-  extra: { env?: NodeJS.ProcessEnv; presetsPath?: string } = {},
+  extra: {
+    env?: NodeJS.ProcessEnv;
+    presetsPath?: string;
+    home?: string;
+    git?: () => string | undefined;
+  } = {},
 ): Promise<number> {
   return serve({
     cwd: root,
@@ -94,6 +100,32 @@ describe("jam serve leaves the repository alone", () => {
     expect(code).toBe(1);
     expect(snapshot(root)).toEqual(before);
     expect(existsSync(join(root, ".jira-agent"))).toBe(false);
+  });
+
+  it("resolves a personal binding without writing to the repo or to ~/.jam", async () => {
+    const root = bareRepo();
+    const home = tmp("jam-bindhome-");
+    writeProjectBinding({ workspace: "git:github.com/acme/web", key: "BOUND" }, home);
+
+    const beforeRepo = snapshot(root);
+    const beforeHome = snapshot(home);
+
+    const { deps } = await bootstrapForServe({
+      cwd: root,
+      jira: new FakeJira({}),
+      credentials: noCredentials,
+      env: {},
+      presetsPath: join(tmp("jam-nopresets-"), "presets.yaml"),
+      home,
+      git: () => "git@github.com:acme/web.git",
+    });
+
+    expect(deps.config.project.key).toBe("BOUND");
+    expect(deps.keySource).toBe("binding");
+    expect(deps.configPath).toBeUndefined();
+    expect(snapshot(root)).toEqual(beforeRepo);
+    // The binding store is the user's, not serve's to maintain.
+    expect(snapshot(home)).toEqual(beforeHome);
   });
 
   it("reads an existing config and never rewrites it", async () => {

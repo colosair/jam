@@ -3,7 +3,7 @@ import { homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 
-export type BootstrapSource = "explicit" | "env" | "preset";
+export type BootstrapSource = "explicit" | "env" | "binding" | "preset";
 
 export type KeyDecision = {
   key: string;
@@ -18,15 +18,25 @@ export const DEFAULT_PRESETS_PATH = join(homedir(), ".jira-agent", "presets.yaml
 export type DecideProjectKeyOptions = {
   explicitKey?: string;
   env?: NodeJS.ProcessEnv;
+  /**
+   * The key this user has bound to this workspace, already looked up. Passed
+   * in rather than read here so this function stays a pure ordering of
+   * explicit sources.
+   */
+  bindingKey?: string;
   presetsPath?: string;
 };
 
 /**
  * Decide a project key from explicit sources only - JAM never guesses a Jira
  * project from a folder or repo name. Order: `--project` flag, then
- * `JAM_PROJECT_KEY`, then a matching entry in the user's preset file.
- * Returns undefined when none apply, which the caller must treat as
- * "cannot safely bootstrap".
+ * `JAM_PROJECT_KEY`, then this user's binding for the workspace, then a
+ * matching entry in the legacy preset file. Returns undefined when none
+ * apply, which the caller must treat as "cannot decide safely".
+ *
+ * Flag over environment over persisted, because what someone typed for this
+ * run should beat what a shell exported, which should beat what was recorded
+ * some time ago.
  */
 export function decideProjectKey(
   root: string,
@@ -37,6 +47,9 @@ export function decideProjectKey(
 
   const envKey = (options.env ?? process.env).JAM_PROJECT_KEY?.trim();
   if (envKey) return { key: envKey, source: "env" };
+
+  const bindingKey = options.bindingKey?.trim();
+  if (bindingKey) return { key: bindingKey, source: "binding" };
 
   const preset = findPresetKey(root, options.presetsPath ?? DEFAULT_PRESETS_PATH);
   if (preset) return { key: preset, source: "preset" };
