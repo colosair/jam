@@ -16,9 +16,11 @@ export type RuntimeConfig = {
  * User-local runtime config. This file answers exactly one question - which
  * JAM build should run on this machine - and nothing else.
  *
- * Deliberately never stored here: Jira credentials, Jira project keys, or
- * anything else specific to a single project. Those live in the credential
- * boundary and in each project's own `.jira-agent/project.yaml`, so that
+ * Deliberately never stored in *this file*: Jira credentials, Jira project
+ * keys, or anything else specific to a single project. Those live in the
+ * credential boundary, in each project's own `.jira-agent/project.yaml`, and -
+ * for a user who binds a workspace without committing anything to it - in the
+ * server-owned `~/.jam/projects.yaml` beside this file. Separate files so
  * switching runtime never touches project state and vice versa.
  */
 export function runtimeConfigPath(home: string = homedir()): string {
@@ -68,7 +70,7 @@ export function writeRuntimeConfig(config: RuntimeConfig, home?: string): string
   writeFileSync(
     path,
     `# JAM runtime selection for this user. Safe to edit by hand.\n` +
-      `# Never put Jira credentials or project keys here.\n` +
+      `# Never put Jira credentials or project keys here - see projects.yaml.\n` +
       `version: 1\n\n${body}`,
     "utf8",
   );
