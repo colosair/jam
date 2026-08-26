@@ -59,7 +59,30 @@ if (declared !== version) {
   fail("packages/launcher/src/release.ts", `SERVER_VERSION = "${declared}", expected "${version}"`);
 }
 
-// 4. Every version a reader is told to type.
+// 4. The lockfile, which is what actually links a contributor's node_modules.
+//
+// It records each workspace package's version and bin map separately from the
+// manifest, and `npm install` links from it - so a stale lockfile silently
+// recreates whatever bin layout it remembers. That is not hypothetical: the
+// rename of the server's bin left `node_modules/.bin/jam` pointing at the
+// server on machines that had installed before it.
+const lock = JSON.parse(read("package-lock.json"));
+for (const name of PACKAGES) {
+  const entry = lock.packages?.[`packages/${name}`];
+  if (!entry) {
+    fail("package-lock.json", `no entry for packages/${name} - run npm install`);
+    continue;
+  }
+  if (entry.version !== version) {
+    fail("package-lock.json", `packages/${name} at ${entry.version}, expected ${version} - run npm install`);
+  }
+  const expected = JSON.stringify(manifests[name].bin ?? {});
+  if (JSON.stringify(entry.bin ?? {}) !== expected) {
+    fail("package-lock.json", `packages/${name} bin is stale - run npm install`);
+  }
+}
+
+// 5. Every version a reader is told to type.
 //
 // Only tracked files: an untracked scratch file is nobody's instruction, and a
 // stale tarball under private/ is a build artefact, not a claim.
