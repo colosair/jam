@@ -23,8 +23,10 @@ export const USAGE = `jam - Jira Agent MCP
 Usage:
   jam serve               Run the MCP server over stdio (default; this is what Claude Code / Codex launch)
   jam doctor              Diagnose config, credentials and Jira connectivity
-  jam setup [--project KEY] [--migrate] [--non-interactive]
-                          Wire up this project (project.yaml, .mcp.json) and run doctor
+  jam setup [--project KEY] [--shared] [--migrate] [--non-interactive]
+                          Wire up this project and run doctor. Binds it to you
+                          alone, writing nothing to the repository; --shared
+                          adopts JAM for the team (project.yaml, .mcp.json)
   jam runtime             Show which JAM build this machine runs
   jam runtime use package | development <path>
                           Change it (writes ~/.jam/config.yaml only, never a project)
