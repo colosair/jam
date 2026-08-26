@@ -275,8 +275,10 @@ remains, and reports how far it got via `changesApplied`. A missing credential
 should leave a project wired and waiting, not half-wired — and the caller needs
 to know which happened.
 
-The only genuine human boundary is authentication. Everything else an agent can
-complete on its own.
+Authentication is always a human boundary. Project selection is also a human
+boundary whenever no canonical binding exists - JAM will list the projects it
+can see and stop, because guessing which one a repository belongs to is a
+decision, not a detection. Everything else an agent can complete on its own.
 
 ## Roadmap
 

@@ -15,6 +15,14 @@ something is agreed, approved, unblocked, or done.
 Every result carries a `meta` block. If `meta.complete` is `false`, report the
 answer as partial rather than answering as if it were whole.
 
+`meta.complete` is about retrieval, not about the project. It means JAM
+finished the Jira read with no known loss — never that Jira holds the whole
+story. `meta.evidenceScope` and `meta.limitations` say what was not evaluated:
+the repository, external sources, and any dependency that lives outside Jira.
+So `links: []` with `linksComplete: true` means Jira holds no visible link,
+not that nothing blocks the work, and `blocksThisIssue` reports how Jira words
+a link rather than whether work can start.
+
 ## Absence of evidence is not evidence of absence
 
 A complete JAM read proves what Jira holds — not what was decided. When an

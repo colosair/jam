@@ -116,14 +116,19 @@ MCP servers or the refusal rules that prevent guessing. Routing it through
 enforced for agents by construction rather than by instructions in a README
 that an agent may or may not follow.
 
-### Why authentication is the one human boundary
+### Why authentication and project selection are human boundaries
 
-Everything else in setup is a decision JAM can make correctly from the state of
-the machine. Credentials are not: they are a secret the user holds, and an
-agent that asks for one, stores one, or writes one into a repo has done
-something wrong regardless of intent. So `JAM_AUTH_REQUIRED` is a stop with a
-structured next action, and `auth status` returns presence and origin but never
-a value.
+Most of setup is a decision JAM can make correctly from the state of the
+machine. Credentials are not: they are a secret the user holds, and an agent
+that asks for one, stores one, or writes one into a repo has done something
+wrong regardless of intent. So `JAM_AUTH_REQUIRED` is a stop with a structured
+next action, and `auth status` returns presence and origin but never a value.
+
+Project selection is the second. When no canonical binding exists, which Jira
+project a repository belongs to is not visible in the machine's state - a name
+that looks like a match is a guess, and a wrong binding sends every later read
+at the wrong project while looking configured. `JAM_PROJECT_SELECTION_REQUIRED`
+therefore stops the same way, listing what is visible and choosing nothing.
 
 ## Consequences
 

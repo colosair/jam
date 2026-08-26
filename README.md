@@ -25,11 +25,25 @@ Two rules make this work:
 2. **Nothing is truncated silently.** Every result carries a `meta` block; if
    `meta.complete` is `false`, something was dropped and `meta.reason` /
    `meta.overflow` say what.
+3. **A complete read is a complete *read*.** `meta.complete` says JAM finished
+   the Jira retrieval with no known loss. What it did not look at is in the
+   same block: `evidenceScope` and `limitations` name the repository and every
+   external source. Jira evidence is what JAM answers with; execution reality
+   is somebody else's question.
 
 ```json
 {
   "issues": [{ "key": "PROJECT-101", "summary": "Example issue", "status": "To Do" }],
-  "meta": { "level": "search", "complete": true, "pagesFetched": 1, "fetchedAt": "..." }
+  "meta": {
+    "level": "search",
+    "complete": true,
+    "pagesFetched": 1,
+    "fetchedAt": "...",
+    "source": "jira",
+    "provenance": "live",
+    "evidenceScope": "jira-records-only",
+    "limitations": ["REPOSITORY_NOT_EVALUATED", "EXTERNAL_SOURCES_NOT_EVALUATED", "NON_JIRA_DEPENDENCIES_NOT_EVALUATED"]
+  }
 }
 ```
 
@@ -141,9 +155,11 @@ problem, or a local setup problem?
 [OK]   Project config - .jira-agent/project.yaml (project=PROJECT)
 [OK]   Jira project key - PROJECT
 [OK]   Credentials present - you@example.com @ https://your-site.atlassian.net (user-env)
+[OK]   Jira base URL - https://your-site.atlassian.net
 [OK]   MCP server startup - 3 tools registered
 [OK]   Jira authentication - Your Name
 [OK]   JQL search / PROJECT access - reachable (sample PROJECT-101)
+[OK]   Issue detail endpoint - reachable (PROJECT-101)
 ```
 
 `jam serve` runs local checks only before starting, so Jira's latency never

@@ -266,6 +266,39 @@ Project: PROJECT
 Result: ready
 ```
 
+## Terminal acceptance
+
+Unit tests drive a pipe, and a pipe has no IME, no character width and no
+terminal line editor. The behaviour this section is about only exists on a real
+terminal, so it is checked by a person there, on each platform, against this
+list. A failing row blocks the change; it is not a footnote.
+
+Run `jam auth login` and, at **Paste your Jira URL**:
+
+```text
+ASCII typed, then Backspace
+여러 글자 한글 입력, 연속 Backspace로 전부 삭제
+한글 조합 도중 Backspace
+한/영 혼합, 한글 + 영문 + 숫자
+←  →  Home  End 로 커서 이동한 뒤 중간 삽입
+paste
+Enter on an empty line takes the [offered] value
+Ctrl-C exits 130, Ctrl-D and a closed stdin cancel too
+three unusable URLs end with "after 3 attempts"
+```
+
+Then at **Atlassian API token**: nothing echoes, paste works, Backspace
+deletes, Enter submits, Esc cancels.
+
+| Platform | Status |
+|---|---|
+| Windows Terminal | pending |
+| macOS Terminal | pending |
+| Linux | pending — no device |
+
+Record the outcome here rather than in a commit message: the next person to
+touch `ui.ts` needs to know which platforms were actually exercised.
+
 ## Machine output
 
 For agents and scripts:

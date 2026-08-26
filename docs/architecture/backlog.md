@@ -26,10 +26,17 @@ This is not a JAM retrieval bug. JAM returned everything Jira held, and
 person writing the description named dependencies that nobody then recorded as
 links.
 
-It matters because `jira_context` exists to answer "can this start yet", and
-that answer is computed from `issueLinks`. If a real blocker was only ever
-written in prose, a structurally correct "nothing is blocking this" is
-substantively wrong.
+What it would detect is a **disagreement inside Jira's own record** — prose and
+structure describing different dependency sets. It is not repository dependency
+detection, and it would not tell anyone whether work can start: JAM reports Jira
+evidence, and `meta.limitations` already says the repository and external
+sources were not evaluated.
+
+It matters because `jira_context` supplies the Jira-recorded evidence for a
+readiness question, and `issueLinks` is the structured half of it. If a
+prerequisite was only ever written in prose, a reader who sees an empty link
+list is missing something Jira itself contains — which is a narrower and more
+answerable problem than "is this really blocked".
 
 ### Candidate behaviour
 
@@ -128,7 +135,32 @@ Purpose:
 
 ---
 
-### Rule for all three
+---
+
+## 4. `statusChangedAt` — freshness beyond `updated`
+
+**Status:** deferred, with a stated cost.
+
+`jira_full` now reports `latestCommentAt`, and every level already carries
+`issue.updated` and `meta.fetchedAt`. The missing freshness fact is when the
+status last changed — "In Progress since when", which is the one an ageing
+board actually turns on.
+
+It cannot be derived from what JAM fetches. Status transitions live in the
+changelog, which is in `HEAVY_FIELDS` and never requested; `expand=changelog`
+appears nowhere. Adding it means a heavier read on every full call, against a
+policy whose whole value is that a read stays cheap and predictable.
+
+So it waits for evidence that it changes decisions often enough to be worth
+that, and JAM ships the facts it already holds rather than a proxy dressed up
+as the real thing. `issue.updated` is not that fact: it moves for any edit.
+
+Nothing here becomes a `stale` flag. Thresholds are per-team, and a verdict
+computed from someone else's threshold is worse than a timestamp.
+
+---
+
+### Rule for the benchmark follow-ups
 
 None of these results may be merged into, or presented as revisions of, the
 v1 benchmark. v1 measured what it measured under a stated protocol; a

@@ -405,6 +405,15 @@ type CompletenessMeta = {
   level: "search" | "context" | "full";
   complete: boolean;
 
+  source: "jira";
+  provenance: "live" | "cache";
+  evidenceScope: "jira-records-only";
+  limitations: (
+    | "REPOSITORY_NOT_EVALUATED"
+    | "EXTERNAL_SOURCES_NOT_EVALUATED"
+    | "NON_JIRA_DEPENDENCIES_NOT_EVALUATED"
+  )[];
+
   pagesFetched?: number;
   fieldsLoaded?: string[];
 
