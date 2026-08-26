@@ -1,6 +1,6 @@
 {
   "name": "@jam-mcp/launcher",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "JAM launcher - resolves which JAM runtime to run and dispatches to it",
   "keywords": [
     "jira",

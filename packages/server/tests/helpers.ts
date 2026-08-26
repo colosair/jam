@@ -15,6 +15,9 @@ import type {
   SearchPageResult,
 } from "../src/ports/jira-read.port.js";
 import type { TelemetryPort, ToolMetrics } from "../src/ports/telemetry.port.js";
+import type { JiraWritePort } from "../src/ports/jira-write.port.js";
+import type { JiraTransition } from "../src/domain/write.js";
+import { WritePlanStore } from "../src/application/write-plan-store.js";
 import type { FullIssueContext } from "../src/domain/context.js";
 
 /**
@@ -121,14 +124,94 @@ export class FakeJira implements JiraReadPort {
   }
 }
 
-export function testDeps(jira: JiraReadPort, config: ProjectConfig = testConfig()): JamDeps {
+export function testDeps(
+  jira: JiraReadPort,
+  config: ProjectConfig = testConfig(),
+  jiraWrite: JiraWritePort = new UnreachableJiraWrite(),
+  writePlans: WritePlanStore = new WritePlanStore(),
+): JamDeps {
   return {
     config,
     jira,
+    jiraWrite,
+    writePlans,
     cache: new NoopCache(),
     telemetry: new RecordingTelemetry(),
     credentials: new FakeCredentials(),
   };
+}
+
+/**
+ * The default write port for tests that are not about writing.
+ *
+ * Throws rather than no-ops: a read test that somehow reaches a write should
+ * fail loudly, not silently pass having mutated nothing.
+ */
+export class UnreachableJiraWrite implements JiraWritePort {
+  async updateIssue(): Promise<void> {
+    throw new Error("test reached the write port unexpectedly");
+  }
+  async addComment(): Promise<{ id: string }> {
+    throw new Error("test reached the write port unexpectedly");
+  }
+  async getTransitions(): Promise<JiraTransition[]> {
+    throw new Error("test reached the write port unexpectedly");
+  }
+  async transitionIssue(): Promise<void> {
+    throw new Error("test reached the write port unexpectedly");
+  }
+}
+
+/**
+ * A write port that records what it was asked to do and answers from a script.
+ *
+ * Every write test drives this rather than a real adapter - nothing in the
+ * suite may reach a Jira write endpoint, and "did JAM call this once, with
+ * exactly this" is most of what the write tests assert.
+ */
+export class FakeJiraWrite implements JiraWritePort {
+  readonly updates: { key: string; fields: Record<string, unknown> }[] = [];
+  readonly comments: { key: string; body: string }[] = [];
+  readonly transitionCalls: { key: string; transitionId: string }[] = [];
+  transitions: JiraTransition[] = [];
+  /** Thrown by the next mutating call, once. */
+  failNext?: Error;
+
+  constructor(options: { transitions?: JiraTransition[] } = {}) {
+    if (options.transitions) this.transitions = options.transitions;
+  }
+
+  private throwIfArmed(): void {
+    const err = this.failNext;
+    if (!err) return;
+    this.failNext = undefined as unknown as Error;
+    throw err;
+  }
+
+  async updateIssue(key: string, fields: Record<string, unknown>): Promise<void> {
+    this.throwIfArmed();
+    this.updates.push({ key, fields });
+  }
+
+  async addComment(key: string, body: string): Promise<{ id: string }> {
+    this.throwIfArmed();
+    this.comments.push({ key, body });
+    return { id: `comment-${this.comments.length}` };
+  }
+
+  async getTransitions(): Promise<JiraTransition[]> {
+    return this.transitions;
+  }
+
+  async transitionIssue(key: string, transitionId: string): Promise<void> {
+    this.throwIfArmed();
+    this.transitionCalls.push({ key, transitionId });
+  }
+
+  /** Every mutating call, in order - used to prove nothing was retried. */
+  get mutations(): number {
+    return this.updates.length + this.comments.length + this.transitionCalls.length;
+  }
 }
 
 export function issue(partial: Partial<FullIssueContext> & { key: string }): FullIssueContext {

@@ -6,9 +6,12 @@ import type { JamDeps } from "../../src/deps.js";
 import { FakeJira, issue, testDeps } from "../helpers.js";
 
 /**
- * The external contract is the one thing that must not drift: exactly three
- * read tools, fixed input shapes, and a `meta` block on every result.
+ * The external contract is the one thing that must not drift: three read tools
+ * and two write tools, fixed input shapes, and a `meta` block on every read
+ * result.
  */
+const READ_TOOLS = ["jira_context", "jira_full", "jira_search"];
+const WRITE_TOOLS = ["jira_write_apply", "jira_write_plan"];
 async function connect(deps: JamDeps): Promise<Client> {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "contract-test", version: "0" });
@@ -43,24 +46,50 @@ describe("tool contract", () => {
     client = await connect(testDeps(jira));
   });
 
-  it("exposes exactly jira_search, jira_context and jira_full", async () => {
+  it("exposes exactly the three read tools and the two write tools", async () => {
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["jira_context", "jira_full", "jira_search"]);
+    expect(tools.map((t) => t.name).sort()).toEqual([...READ_TOOLS, ...WRITE_TOOLS].sort());
     for (const tool of tools) {
       expect(tool.description).toBeTruthy();
-      expect(tool.annotations?.readOnlyHint).toBe(true);
     }
   });
 
-  it("states the evidence boundary in every tool description", async () => {
+  it("marks the read tools read-only, and only the apply step as writing", async () => {
+    const { tools } = await client.listTools();
+    const byName = Object.fromEntries(tools.map((t) => [t.name, t.annotations ?? {}]));
+
+    for (const name of READ_TOOLS) {
+      expect(byName[name]?.readOnlyHint).toBe(true);
+    }
+    // Planning reads and decides; a host that asks before mutations should not
+    // be asking about it.
+    expect(byName["jira_write_plan"]?.readOnlyHint).toBe(true);
+    expect(byName["jira_write_plan"]?.destructiveHint).toBe(false);
+    // Apply is the one call in JAM that changes anything.
+    expect(byName["jira_write_apply"]?.readOnlyHint).toBe(false);
+    expect(byName["jira_write_apply"]?.idempotentHint).toBe(false);
+  });
+
+  it("states the evidence boundary in every read tool description", async () => {
     const { tools } = await client.listTools();
 
     // An agent reads the description before it reads a result. If only
     // jira_full says what was not evaluated, the other two invite exactly the
     // conclusion JAM cannot support.
-    for (const tool of tools) {
+    for (const tool of tools.filter((t) => READ_TOOLS.includes(t.name))) {
       expect(tool.description).toContain("Repository and external sources are not evaluated.");
     }
+  });
+
+  it("tells an agent how the write pair fits together, in the descriptions", async () => {
+    const { tools } = await client.listTools();
+    const byName = Object.fromEntries(tools.map((t) => [t.name, t.description ?? ""]));
+
+    expect(byName["jira_write_plan"]).toContain("Changes nothing.");
+    expect(byName["jira_write_apply"]).toContain("This changes Jira.");
+    // The one failure an agent must not treat as "try again".
+    expect(byName["jira_write_apply"]).toContain("JAM_WRITE_UNCERTAIN");
+    expect(byName["jira_write_apply"]).toContain("Do NOT call this tool again");
   });
 
   it("carries the evidence boundary on every result", async () => {
@@ -99,6 +128,16 @@ describe("tool contract", () => {
     expect(byName["jira_search"]!.required).toEqual(["jql"]);
     expect(Object.keys(byName["jira_context"]!.properties ?? {})).toEqual(["issueKeys"]);
     expect(Object.keys(byName["jira_full"]!.properties ?? {})).toEqual(["issueKeys"]);
+
+    // Apply takes a plan and nothing else. Any second property here would be a
+    // way to write something the plan did not decide.
+    expect(Object.keys(byName["jira_write_apply"]!.properties ?? {})).toEqual(["planId"]);
+    expect(byName["jira_write_apply"]!.required).toEqual(["planId"]);
+    expect(Object.keys(byName["jira_write_plan"]!.properties ?? {}).sort()).toEqual([
+      "input",
+      "key",
+      "operation",
+    ]);
   });
 
   it("jira_search returns lite issues plus completeness metadata", async () => {

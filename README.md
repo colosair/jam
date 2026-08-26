@@ -6,7 +6,8 @@ An agent-facing Jira access layer for Claude Code and Codex.
 [![node](https://img.shields.io/node/v/@jam-mcp/server)](https://nodejs.org)
 [![license](https://img.shields.io/npm/l/@jam-mcp/server)](LICENSE)
 
-JAM is not a thin Jira wrapper. It exposes **three** read tools and takes over the
+JAM is not a thin Jira wrapper. It exposes **three** read tools plus a checked
+write path, and takes over the
 decisions an agent should not be making: which Jira fields to request, when to
 paginate, when to read the comment thread, and what to do when a result is too
 big. The payoff is that everyday Jira reads stay cheap, important judgements
@@ -51,6 +52,70 @@ Three rules make this work:
 }
 ```
 
+## Writing to Jira
+
+Two tools, and they are two on purpose.
+
+| Tool | What it does |
+|---|---|
+| `jira_write_plan` | reads the issue, checks the change is possible, describes what would happen. **Changes nothing.** |
+| `jira_write_apply` | takes the `planId` and nothing else, makes the change, then reads the issue back to confirm it |
+
+```json
+{ "key": "PROJECT-123", "operation": "status.transition", "input": { "status": "Done" } }
+```
+
+There is no way to write to Jira without planning first: `jira_write_apply`
+accepts a plan handle and no payload, so there is no parameter through which an
+agent could smuggle a change JAM has not looked at. What "Done" means is settled
+during planning — JAM asks Jira which transitions this issue actually offers and
+resolves the id, rather than guessing one from a status name.
+
+Three operations, and a fixed field whitelist:
+
+```text
+comment.add        { "text": "..." }         plain text; JAM converts it, ADF is not accepted
+field.update       summary, priority, labels, components
+status.transition  { "status": "Done" }      matched against Jira's available transitions
+```
+
+### What stops a write going wrong
+
+**Scope.** Writes stay inside the Jira project this workspace is bound to. A key
+from another project is refused by JAM before a request is made, not left to
+come back as an unexplained 403.
+
+**Staleness.** A plan records what the issue looked like when it was made. If
+the issue moves before apply, you get `JAM_WRITE_CONFLICT` and nothing is
+written — plan again against the new state rather than forcing the old one
+through.
+
+**Confirmation.** Jira accepting a request is not the same as the issue having
+changed: a workflow rule can land a transition somewhere else, a screen
+configuration can drop a field update. So apply reads the issue back and checks
+the intended result is really there. A write JAM could not verify is never
+reported as done.
+
+**No blind retries.** A request that times out may already have been applied,
+and resending it is how one comment becomes two. An ambiguous failure is
+`JAM_WRITE_UNCERTAIN`, which means read the issue — not try again.
+
+| Code | What to do |
+|---|---|
+| `JAM_WRITE_SCOPE_VIOLATION` | the key is outside the configured project |
+| `JAM_WRITE_OPERATION_NOT_ALLOWED` / `JAM_WRITE_FIELD_NOT_ALLOWED` | not part of the write surface |
+| `JAM_WRITE_TRANSITION_NOT_AVAILABLE` | pick one of the transitions named in the error |
+| `JAM_WRITE_CONFLICT` / `JAM_WRITE_PLAN_EXPIRED` | plan again |
+| `JAM_WRITE_VERIFICATION_FAILED` | Jira accepted it, the issue does not show it — read the issue |
+| `JAM_WRITE_UNCERTAIN` | read the issue; **do not** re-apply |
+
+Not in this release: creating or deleting issues, bulk changes, editing or
+deleting comments, worklogs, attachments, links, assignee, and custom fields.
+The Atlassian MCP still covers those.
+
+See [ADR: the Jira write plane](docs/decisions/adr-jira-write-plane.md) for why
+it is shaped this way.
+
 ## Setup
 
 You need Node.js 20 or newer. Nothing has to be installed globally — every
@@ -65,7 +130,7 @@ itself — the MCP server, the setup core and the CLI they all reach.
 **For a person**, once per machine:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.0.1 init
+npx --yes @jam-mcp/bootstrap@1.1.0 init
 ```
 
 Choose whether you're *using* JAM (runs the published package) or *developing*
@@ -79,10 +144,10 @@ installing the launcher globally, and everything it runs still goes through the
 runtime you chose above:
 
 ```bash
-npm install -g @jam-mcp/launcher@1.0.1
+npm install -g @jam-mcp/launcher@1.1.0
 ```
 
-Without it, the same commands are `npx --yes @jam-mcp/launcher@1.0.1 <command>`.
+Without it, the same commands are `npx --yes @jam-mcp/launcher@1.1.0 <command>`.
 Nothing else changes — not your editor's wiring, not a shared `.mcp.json`, not
 a teammate who never installed it.
 
@@ -123,15 +188,15 @@ to set JAM up in a project, **use the official path** rather than working out
 an installation from this README:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.0.1 setup --agent
+npx --yes @jam-mcp/bootstrap@1.1.0 setup --agent
 ```
 
 or, to inspect before acting:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.0.1 setup plan --json                     # what would change; changes nothing
-npx --yes @jam-mcp/bootstrap@1.0.1 setup apply --non-interactive --json  # execute it
-npx --yes @jam-mcp/bootstrap@1.0.1 doctor --json                         # verify
+npx --yes @jam-mcp/bootstrap@1.1.0 setup plan --json                     # what would change; changes nothing
+npx --yes @jam-mcp/bootstrap@1.1.0 setup apply --non-interactive --json  # execute it
+npx --yes @jam-mcp/bootstrap@1.1.0 doctor --json                         # verify
 ```
 
 Each returns a single JSON document on stdout with a stable status code. Branch
@@ -155,12 +220,12 @@ Do **not**:
 
 Stop only where a person is genuinely required — `JAM_PROJECT_SELECTION_REQUIRED`
 (ask which Jira project) and `JAM_AUTH_REQUIRED` (ask them to authenticate).
-Finish with `npx --yes @jam-mcp/bootstrap@1.0.1 doctor --json`.
+Finish with `npx --yes @jam-mcp/bootstrap@1.1.0 doctor --json`.
 
 ## Commands
 
 These read as `jam …` throughout — the short form from the optional global
-install above. Everything works the same as `npx --yes @jam-mcp/launcher@1.0.1
+install above. Everything works the same as `npx --yes @jam-mcp/launcher@1.1.0
 …` if you skipped it.
 
 ```text
@@ -228,7 +293,7 @@ and is safe to commit:
 ```json
 {
   "mcpServers": {
-    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.0.1", "serve"] }
+    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.1.0", "serve"] }
   }
 }
 ```
@@ -251,17 +316,23 @@ project:
 `CLAUDE.md` / `AGENTS.md` — keep it short; the tool descriptions carry the detail:
 
 ```text
-For Jira reads, use the JAM tools.
+For Jira, use the JAM tools.
 
 - Discovery / listing            -> jira_search
 - Readiness / blocker /
   dependency / priority          -> jira_context
 - Agreement / contract /
   approval / closure             -> jira_full
+- Changing anything              -> jira_write_plan, then jira_write_apply
 
 Do not use raw Atlassian Jira search when JAM can answer the request.
 A search result is not complete issue context.
 If meta.complete is false, say so instead of answering as if it were.
+
+Never call jira_write_apply without a planId from jira_write_plan.
+On JAM_WRITE_CONFLICT or JAM_WRITE_PLAN_EXPIRED, plan again.
+On JAM_WRITE_UNCERTAIN, read the issue - never re-apply, which may write twice.
+Never report an unverified write as done.
 
 Absence of evidence in Jira is not evidence of absence. If an issue has no
 supporting comments but references an external canonical source (an MR/PR,
@@ -275,8 +346,10 @@ record of the decision. This repo's own
 [`CLAUDE.md`](CLAUDE.md#absence-of-evidence-is-not-evidence-of-absence) carries
 the longer version with a worked example.
 
-JAM does not replace the Atlassian MCP. That one keeps Confluence, writes, and
-anything JAM does not cover; JAM becomes the default path for Jira **reads**.
+JAM does not replace the Atlassian MCP. That one keeps Confluence and every
+Jira change JAM does not cover - creating and deleting issues, bulk edits,
+worklogs, attachments, links, assignee. JAM is the default path for Jira reads,
+and for the three changes it can make safely.
 
 ## Design documents
 
@@ -287,6 +360,7 @@ anything JAM does not cover; JAM becomes the default path for Jira **reads**.
 | [Setup UX contract](docs/operations/setup-ux.md) | CLI symbols, colour, prompts, `NO_COLOR`/non-TTY, JSON output rules |
 | [JAM design of record](docs/architecture/jira-agent-mcp-design.md) | The three-tool contract and read policy |
 | [ADR: Jira read optimization](docs/decisions/adr-jam-jira-read-optimization.md) | Why reads are mediated at all |
+| [ADR: the Jira write plane](docs/decisions/adr-jira-write-plane.md) | Plan/apply, conflict detection, verification, and where plans live |
 | [Benchmark: jira-read-v1](docs/benchmarks/jira-read-v1/README.md) | Measured payload and latency evidence |
 | [Architecture backlog](docs/architecture/backlog.md) | Deferred work, with reasons |
 

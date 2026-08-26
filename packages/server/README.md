@@ -7,19 +7,33 @@ should not be making — which fields to request, when to paginate, when to read
 the comment thread, what to do when a result is too big — so everyday reads stay
 cheap and important judgements still get full context.
 
-## The three tools
+## The tools
 
-The external contract is exactly three tools. Adding or renaming one is a
-breaking change.
+The external contract is five tools. Adding or renaming one is a breaking
+change.
 
 | Tool | Use it for |
 |---|---|
 | `jira_search` | listing, discovery, "what's open", picking candidates |
 | `jira_context` | readiness, blockers, dependencies, priority |
 | `jira_full` | agreement, contract, approval, closure |
+| `jira_write_plan` | work out how to change an issue — changes nothing |
+| `jira_write_apply` | apply a plan, then confirm it by reading the issue back |
 
 A `jira_search` result is never complete issue context — nothing about
 agreement, approval, or done-ness follows from it.
+
+Writing is deliberately two calls. `jira_write_apply` takes a `planId` and no
+payload, so a change cannot be made that JAM has not first read the issue for,
+checked against the configured project, and described. Before writing it
+re-reads the issue and refuses if it moved; after writing it reads again and
+refuses to report success unless the intended result is actually there. An
+ambiguous failure is reported as uncertain rather than retried — retrying a
+write that may have landed is how one comment becomes two.
+
+Three operations: `comment.add` (plain text, converted to ADF here),
+`field.update` (summary, priority, labels, components), and `status.transition`
+(matched against the transitions Jira currently offers, never a guessed id).
 
 ## Evidence boundary
 
@@ -56,10 +70,10 @@ auth login   Store Jira credentials in this user's OS secret store
 runtime      Show or change which JAM build this machine runs
 ```
 
-Written out, that is `npx --yes @jam-mcp/launcher@1.0.1 doctor`, or just `jam
+Written out, that is `npx --yes @jam-mcp/launcher@1.1.0 doctor`, or just `jam
 doctor` if you took the launcher's optional global install. Starting from
 nothing — no install, no runtime chosen yet — use
-`npx --yes @jam-mcp/bootstrap@1.0.1 init` instead.
+`npx --yes @jam-mcp/bootstrap@1.1.0 init` instead.
 
 Credentials come from the process environment or this user's OS secret store —
 never from a repository file — and never appear in logs, telemetry, or tool

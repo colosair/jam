@@ -8,6 +8,9 @@ Use the JAM tools for Jira. Pick by what the answer will be used for:
 - Readiness / blocker / dependency / priority → `jira_context`
 - Agreement / contract / approval / closure → `jira_full`
 
+To change an issue, see [Jira writes](#jira-writes) below - never a raw
+Atlassian write when JAM covers the operation.
+
 Do not use raw Atlassian Jira search when JAM can answer the request. A
 `jira_search` result is not complete issue context — never conclude from it that
 something is agreed, approved, unblocked, or done.
@@ -22,6 +25,40 @@ the repository, external sources, and any dependency that lives outside Jira.
 So `links: []` with `linksComplete: true` means Jira holds no visible link,
 not that nothing blocks the work, and `blocksThisIssue` reports how Jira words
 a link rather than whether work can start.
+
+## Jira writes
+
+Changing a Jira issue is two calls, always in this order:
+
+```text
+jira_write_plan   -> read the issue, check the change is possible, get a planId
+jira_write_apply  -> pass that planId; JAM writes, then reads the issue back
+```
+
+`jira_write_apply` takes a `planId` and nothing else. There is no payload to
+pass and no way to skip the plan - if you find yourself wanting one, the answer
+is a new `jira_write_plan`, not a different call.
+
+Show the user what the plan says before applying it. The plan's `before` and
+`intendedAfter` are the whole point of the split: they are what makes the change
+reviewable while it is still cheap to abandon.
+
+Three operations, and nothing else is writable: `comment.add` (plain text),
+`field.update` (summary, priority, labels, components), `status.transition`.
+Writes are confined to the configured Jira project.
+
+Handle these failures as follows, and do not collapse them into "it failed":
+
+- `JAM_WRITE_CONFLICT`, `JAM_WRITE_PLAN_EXPIRED` - the issue moved or the plan
+  aged out. Plan again against the current state; do not retry the apply.
+- `JAM_WRITE_VERIFICATION_FAILED` - Jira accepted the change but the issue does
+  not show it. Read the issue and tell the user what it actually says.
+- `JAM_WRITE_UNCERTAIN` - JAM does not know whether the write landed. **Read the
+  issue. Never call `jira_write_apply` again** - the write may already have been
+  applied, and a second attempt is a second comment or a second transition.
+
+Only an `applied` receipt means it happened. An unverified or uncertain write is
+never reported to the user as done.
 
 ## Absence of evidence is not evidence of absence
 
@@ -62,15 +99,15 @@ If asked to set JAM up somewhere, use the official setup path — do not work ou
 an installation procedure from the README. One command does the whole thing:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.0.1 setup --agent
+npx --yes @jam-mcp/bootstrap@1.1.0 setup --agent
 ```
 
 To inspect before acting, the same three steps separately:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.0.1 setup plan --json                     # what would change; changes nothing
-npx --yes @jam-mcp/bootstrap@1.0.1 setup apply --non-interactive --json  # execute it
-npx --yes @jam-mcp/bootstrap@1.0.1 doctor --json                         # verify
+npx --yes @jam-mcp/bootstrap@1.1.0 setup plan --json                     # what would change; changes nothing
+npx --yes @jam-mcp/bootstrap@1.1.0 setup apply --non-interactive --json  # execute it
+npx --yes @jam-mcp/bootstrap@1.1.0 doctor --json                         # verify
 ```
 
 Run them through `npx` exactly as written. A bare `jam` is a convenience some
@@ -97,7 +134,7 @@ MCP config file, or pass `--shared` without being asked to.
 
 Stop only for `JAM_PROJECT_SELECTION_REQUIRED` (ask which Jira project) and
 `JAM_AUTH_REQUIRED` (tell the user to authenticate themselves). Finish with
-`npx --yes @jam-mcp/bootstrap@1.0.1 doctor --json`.
+`npx --yes @jam-mcp/bootstrap@1.1.0 doctor --json`.
 
 Authentication is the one step that is not yours to do. Never ask for an API
 token, never accept one that is offered, never store one, and never run the
@@ -113,8 +150,11 @@ TypeScript, ESM, Node 20+. npm workspaces monorepo: `packages/server`
 `src/application` orchestrating, `src/bootstrap` holding detect/plan/apply, and
 `src/mcp` exposing the tools.
 
-- The external contract is exactly three tools. Adding or renaming one is a
-  breaking change; internal refactors must not touch it.
+- The external contract is exactly five tools - three read, two write. Adding
+  or renaming one is a breaking change; internal refactors must not touch it.
+- Writing is plan then apply. `jira_write_apply` takes a `planId` and no
+  payload, and a write is not applied until a direct read confirms it. A write
+  is never retried on an ambiguous failure.
 - Raw Jira DTOs stop at `src/adapters/jira-cloud/mapper.ts`.
 - Credentials never reach a log, telemetry line, or tool result.
 - Silent truncation is a release blocker. Anything dropped must show up in

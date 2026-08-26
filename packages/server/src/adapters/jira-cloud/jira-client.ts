@@ -3,9 +3,18 @@ import type { CredentialPort, JiraCredentials } from "../../ports/credentials.po
 
 export type JiraRequest = {
   path: string;
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PUT";
   query?: Record<string, string | number | undefined>;
   body?: unknown;
+  /**
+   * Whether a transient failure may be retried.
+   *
+   * Reads say yes and get the retry loop below. Writes say no: a request that
+   * timed out may already have been applied, so resending it is how one
+   * comment becomes two. The write path resolves that ambiguity by reading the
+   * issue back, never by trying again.
+   */
+  retry?: boolean;
 };
 
 export type JiraResponse<T> = {
@@ -89,7 +98,7 @@ export class JiraClient {
       // ponytail: fixed 2 retries on transient statuses; add backoff tuning if
       // `complete` searches start tripping Jira's rate limiter in practice.
       const transient = res.status === 429 || res.status >= 500;
-      if (transient && attempt < MAX_RETRIES) {
+      if (req.retry !== false && transient && attempt < MAX_RETRIES) {
         lastError = error;
         await sleep(retryDelayMs(res.headers.get("retry-after"), attempt));
         continue;

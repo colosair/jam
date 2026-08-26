@@ -8,6 +8,8 @@ import type { ProjectConfig } from "./config/schema.js";
 import type { CachePort } from "./ports/cache.port.js";
 import type { CredentialPort } from "./ports/credentials.port.js";
 import type { JiraReadPort } from "./ports/jira-read.port.js";
+import type { JiraWritePort } from "./ports/jira-write.port.js";
+import { WritePlanStore } from "./application/write-plan-store.js";
 import type { TelemetryPort } from "./ports/telemetry.port.js";
 
 /** Everything the application layer is allowed to reach for. */
@@ -17,6 +19,17 @@ export type JamDeps = {
   /** Where the project key came from when no config file supplied one. */
   keySource?: BootstrapSource;
   jira: JiraReadPort;
+  /**
+   * The mutating half. Separate from `jira` on purpose: reading and writing
+   * have different retry rules and different confirmation rules, and one port
+   * that did both would blur them.
+   */
+  jiraWrite: JiraWritePort;
+  /**
+   * Plans awaiting apply. Lives for the life of this server process - see
+   * WritePlanStore for why it is not persisted.
+   */
+  writePlans: WritePlanStore;
   cache: CachePort;
   telemetry: TelemetryPort;
   credentials: CredentialPort;
@@ -26,6 +39,8 @@ export type BuildDepsOptions = {
   cwd?: string;
   /** Injected by tests to bypass the real REST adapter. */
   jira?: JiraReadPort;
+  /** Injected by tests so no test can reach a real Jira write endpoint. */
+  jiraWrite?: JiraWritePort;
   /** Injected by tests to bypass the real process/registry credential lookup. */
   credentials?: CredentialPort;
   /**
@@ -75,11 +90,21 @@ export async function buildDeps(options: BuildDepsOptions = {}): Promise<JamDeps
     jira = new JiraCloudReadAdapter(credentials, resolved.config);
   }
 
+  let jiraWrite = options.jiraWrite;
+  if (!jiraWrite) {
+    const { JiraCloudWriteAdapter } = await import(
+      "./adapters/jira-cloud/jira-write.adapter.js"
+    );
+    jiraWrite = new JiraCloudWriteAdapter(credentials);
+  }
+
   return {
     config: resolved.config,
     configPath: resolved.configPath,
     keySource: resolved.keySource,
     jira,
+    jiraWrite,
+    writePlans: new WritePlanStore(),
     cache: new NoopCache(),
     telemetry,
     credentials,

@@ -17,6 +17,20 @@ export const JAM_ERROR_CODES = [
   "JIRA_UNAVAILABLE",
   "JAM_SETUP_REQUIRED",
   "JAM_BINDINGS_UNREADABLE",
+
+  // Write plane. Each names a distinct decision an agent has to make, which is
+  // why none of them collapse into CONFIG_INVALID: "you may not write there",
+  // "someone else moved it", and "we could not confirm it happened" call for
+  // three different next steps.
+  "JAM_WRITE_SCOPE_VIOLATION",
+  "JAM_WRITE_OPERATION_NOT_ALLOWED",
+  "JAM_WRITE_FIELD_NOT_ALLOWED",
+  "JAM_WRITE_TRANSITION_NOT_AVAILABLE",
+  "JAM_WRITE_PLAN_NOT_FOUND",
+  "JAM_WRITE_PLAN_EXPIRED",
+  "JAM_WRITE_CONFLICT",
+  "JAM_WRITE_VERIFICATION_FAILED",
+  "JAM_WRITE_UNCERTAIN",
 ] as const;
 
 export type JamErrorCode = (typeof JAM_ERROR_CODES)[number];

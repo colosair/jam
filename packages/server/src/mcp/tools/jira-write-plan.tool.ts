@@ -1,0 +1,68 @@
+import { z } from "zod";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { planWrite } from "../../application/plan-write.js";
+import type { JamDeps } from "../../deps.js";
+import { WRITABLE_FIELDS, WRITE_OPERATIONS } from "../../domain/write.js";
+import { runTool } from "../tool-result.js";
+
+const DESCRIPTION = `Work out how to change one Jira issue, and get back a plan. Changes nothing.
+
+This is the first half of every write. Call it, read what it says the issue looks like now and what it would become, then pass the returned planId to jira_write_apply. There is no way to write to Jira without a plan, and a plan cannot be assembled by hand - only jira_write_plan issues one.
+
+Operations:
+- comment.add        input: { "text": "..." }        plain text; JAM converts it, do not send ADF
+- field.update       input: { "summary"?, "priority"?, "labels"?, "components"? }
+- status.transition  input: { "status": "Done" }     JAM asks Jira which transitions exist and matches yours
+
+Writes are limited to the Jira project this workspace is bound to; a key from another project is refused rather than attempted.
+
+The plan records what the issue looked like when it was made, and expires. If the issue changes in the meantime, jira_write_apply refuses with JAM_WRITE_CONFLICT - re-plan against the new state rather than forcing the old one through.
+
+A plan is a statement about what is possible right now, not a promise that it will happen. Nothing is written until jira_write_apply runs.`;
+
+export function registerJiraWritePlan(server: McpServer, deps: JamDeps): void {
+  server.registerTool(
+    "jira_write_plan",
+    {
+      title: "Plan a change to a Jira issue (writes nothing)",
+      description: DESCRIPTION,
+      inputSchema: {
+        key: z.string().min(1).describe('Issue key, e.g. "PROJECT-123". Must be in the configured project.'),
+        operation: z
+          .enum(WRITE_OPERATIONS)
+          .describe(`What to do: ${WRITE_OPERATIONS.join(", ")}.`),
+        input: z
+          .object({
+            text: z.string().min(1).optional().describe("comment.add: the comment, as plain text."),
+            status: z
+              .string()
+              .min(1)
+              .optional()
+              .describe("status.transition: the status to move to, e.g. \"Done\"."),
+            summary: z.string().min(1).optional(),
+            priority: z.string().min(1).optional().describe('Priority name, e.g. "High".'),
+            labels: z.array(z.string()).optional().describe("Replaces the whole label set."),
+            components: z
+              .array(z.string())
+              .optional()
+              .describe("Component names. Replaces the whole component set."),
+          })
+          .describe(
+            `Operation input. field.update accepts only ${WRITABLE_FIELDS.join(", ")} - custom fields and assignee are not writable.`,
+          ),
+      },
+      // Planning reads Jira and decides; it never mutates. Hosts are free to
+      // run it without asking, which is what keeps the two-step shape cheap.
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+    },
+    async (args) =>
+      runTool("jira_write_plan", deps.telemetry, async () => {
+        const { receipt } = await planWrite(deps, {
+          key: args.key,
+          operation: args.operation,
+          input: args.input as Record<string, unknown>,
+        });
+        return receipt;
+      }),
+  );
+}

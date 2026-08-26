@@ -55,7 +55,7 @@ Three, released lockstep at the same version.
 
 | Package | Owns | Must not contain |
 |---|---|---|
-| `@jam-mcp/server` | JAM CLI, bootstrap core, Jira ports/adapters, application, domain, policy, MCP server and the three tools. `bin: jam-server` | — |
+| `@jam-mcp/server` | JAM CLI, bootstrap core, Jira ports/adapters, application, domain, policy, MCP server and its five tools. `bin: jam-server` | — |
 | `@jam-mcp/launcher` | Runtime config, resolver, package/development runtimes, child dispatch with cwd/stdio/exit/signal forwarding. `bin: jam-launcher`, plus `jam` as an optional human façade | Jira API calls, credential logic, setup mutation, MCP tools |
 | `@jam-mcp/bootstrap` | Zero-install entry for first run, human and agent. `bin: jam-bootstrap` | Any setup logic of its own — it forwards to the server |
 
@@ -103,7 +103,7 @@ Neither touches a project.
 ```json
 {
   "mcpServers": {
-    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.0.1", "serve"] }
+    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.1.0", "serve"] }
   }
 }
 ```
@@ -360,7 +360,7 @@ What each layer is actually held to:
   takes its store as a required argument, so no test can reach a real keychain,
   libsecret session or DPAPI blob. The tarball sandbox switches the store off
   outright rather than relying on which backends happen to live under `HOME`.
-- **MCP contract** — exactly three tools, unchanged.
+- **MCP contract** — exactly five tools (three read, two write), unchanged by any internal work.
 
 Package paths are covered by `npm run pack:all` and `npm run smoke`, which
 install the tarballs into sandboxes with their own `HOME`, cwd, npm cache and a
