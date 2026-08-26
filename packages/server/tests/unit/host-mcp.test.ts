@@ -6,7 +6,9 @@ import {
   describeHostCommand,
   detectHosts,
   hostRegistration,
+  listsJamEntry,
   type HostCommand,
+  type HostRunResult,
 } from "../../src/bootstrap/host-mcp.js";
 import { LAUNCHER_PACKAGE_SPEC } from "../../src/bootstrap/mcp-config-merger.js";
 import { applySetupPlan } from "../../src/bootstrap/setup-apply.js";
@@ -21,7 +23,7 @@ import type { CredentialPort } from "../../src/ports/credentials.port.js";
  */
 
 /** Records every command, so a spawn during planning is a failing test. */
-function recorder(answers: (cmd: HostCommand) => { status: number | null; failed: boolean }) {
+function recorder(answers: (cmd: HostCommand) => HostRunResult) {
   const calls: HostCommand[] = [];
   const run = (cmd: HostCommand) => {
     calls.push(cmd);
@@ -30,9 +32,20 @@ function recorder(answers: (cmd: HostCommand) => { status: number | null; failed
   return { run, calls };
 }
 
-const available = () => ({ status: 1, failed: false }); // present, no jam entry
-const registered = () => ({ status: 0, failed: false });
-const missing = () => ({ status: null, failed: true });
+// Both CLIs exit 0 whether or not a server exists, so these differ by what
+// they list, not by status - which is the whole reason detection reads the
+// name column.
+const available = (): HostRunResult => ({
+  status: 0,
+  failed: false,
+  stdout: ["other  npx  enabled", ""].join("\n"),
+});
+const registered = (): HostRunResult => ({
+  status: 0,
+  failed: false,
+  stdout: ["jam  npx --yes @jam-mcp/launcher@1.0.0 serve  enabled", "other  npx", ""].join("\n"),
+});
+const missing = (): HostRunResult => ({ status: null, failed: true, stdout: "" });
 
 const configuredCredentials: CredentialPort = {
   load: () => ({
@@ -80,10 +93,10 @@ describe("detectHosts", () => {
       { id: "claude-code", cliAvailable: true, hasJamEntry: false },
       { id: "codex", cliAvailable: true, hasJamEntry: false },
     ]);
-    // `get` only - nothing here may change a host's configuration.
-    expect(calls.map((c) => c.args.slice(0, 2))).toEqual([
-      ["mcp", "get"],
-      ["mcp", "get"],
+    // Listing only - nothing here may change a host's configuration.
+    expect(calls.map((c) => c.args)).toEqual([
+      ["mcp", "list"],
+      ["mcp", "list"],
     ]);
   });
 
@@ -160,7 +173,7 @@ describe("host registration through plan and apply", () => {
     });
 
     expect(() =>
-      applySetupPlan(plan, { home, runHost: () => ({ status: 2, failed: false }) }),
+      applySetupPlan(plan, { home, runHost: () => ({ status: 2, failed: false, stdout: '' }) }),
     ).toThrowError(/claude-code/);
   });
 
@@ -168,7 +181,19 @@ describe("host registration through plan and apply", () => {
     const registration = hostRegistration("claude-code")!;
     const text = describeHostCommand(registration);
 
-    expect(text.startsWith("claude mcp add-json jam ")).toBe(true);
-    expect(text).toContain("-s user");
+    expect(text.startsWith("claude mcp add jam -s user -- npx ")).toBe(true);
+    // Every token is bare, so nothing here needs quoting through a shell.
+    expect(text).not.toContain('"');
+  });
+
+  it("reads the name column, not any word that happens to say jam", () => {
+    const lookalikes = [
+      "jam-tools  npx",
+      "other  https://example.com/jam/mcp",
+      "  claude.ai Jira: https://mcp.atlassian.com - connected",
+    ].join("\n");
+
+    expect(listsJamEntry(lookalikes)).toBe(false);
+    expect(listsJamEntry(["jam  npx  enabled", ...lookalikes.split("\n")].join("\n"))).toBe(true);
   });
 });

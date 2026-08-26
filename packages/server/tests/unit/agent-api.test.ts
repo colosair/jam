@@ -31,7 +31,7 @@ const noCredentials: CredentialPort = {
  * the workspace remote, and the host CLIs. `noHosts` is what keeps a test run
  * from registering JAM with the developer's own Claude Code or Codex.
  */
-const noHosts = () => ({ status: null, failed: true });
+const noHosts = () => ({ status: null, failed: true, stdout: '' });
 const pinned = { env: {}, git: () => undefined, runHost: noHosts };
 const authenticated = () => ({ credentials: new FakeCredentials(), ...pinned });
 const unauthenticated = () => ({ credentials: noCredentials, ...pinned });
