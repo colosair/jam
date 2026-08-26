@@ -112,7 +112,7 @@ describe("resolveProjectConfig", () => {
 
     const resolved = resolveProjectConfig({
       cwd: root,
-      allowKeyFallback: true,
+      keyFallback: "required",
       explicitKey: "SHOULD_BE_IGNORED",
     });
     expect(resolved.config.project.key).toBe("PROJECT");
@@ -127,7 +127,7 @@ describe("resolveProjectConfig", () => {
 
     const resolved = resolveProjectConfig({
       cwd: root,
-      allowKeyFallback: true,
+      keyFallback: "required",
       explicitKey: "PROJECT",
       env: {},
       presetsPath: join(root, "does-not-exist.yaml"),
@@ -149,12 +149,40 @@ describe("resolveProjectConfig", () => {
     expect(() =>
       resolveProjectConfig({
         cwd: root,
-        allowKeyFallback: true,
+        keyFallback: "required",
         env: {},
         presetsPath: join(root, "does-not-exist.yaml"),
       }),
     ).toThrowError(expect.objectContaining({ code: "JAM_SETUP_REQUIRED" }));
     expect(existsSync(join(root, ".jira-agent", "project.yaml"))).toBe(false);
+  });
+
+  it("resolves a binding-supplied key without throwing, for the read-only commands", () => {
+    const root = tmp("jam-optional-");
+    mkdirSync(join(root, ".git"), { recursive: true });
+
+    // "optional" is what doctor passes: report what serve would run with, and
+    // never refuse to load just because nothing supplied a key.
+    const resolved = resolveProjectConfig({
+      cwd: root,
+      keyFallback: "optional",
+      env: {},
+      presetsPath: join(root, "does-not-exist.yaml"),
+    });
+
+    expect(resolved.config.project.key).toBe("");
+    expect(resolved.keySource).toBeUndefined();
+
+    const withKey = resolveProjectConfig({
+      cwd: root,
+      keyFallback: "optional",
+      explicitKey: "PROJECT",
+      env: {},
+      presetsPath: join(root, "does-not-exist.yaml"),
+    });
+
+    expect(withKey.config.project.key).toBe("PROJECT");
+    expect(existsSync(join(root, ".jira-agent"))).toBe(false);
   });
 
   it("falls back to defaults when no fallback key is allowed (doctor's read-only path)", () => {

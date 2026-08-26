@@ -19,7 +19,7 @@ export type BootstrapForServeOptions = Pick<
  * when Jira is slow or briefly unreachable.
  */
 export async function bootstrapForServe(options: BootstrapForServeOptions = {}): Promise<BootstrapResult> {
-  const deps = await buildDeps({ ...options, allowKeyFallback: true });
+  const deps = await buildDeps({ ...options, keyFallback: "required" });
   const gate = await runHealthGate(deps, "boot");
   return { deps, gate };
 }

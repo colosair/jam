@@ -103,6 +103,15 @@ describe("project bindings", () => {
     expect(readProjectBindings(dir)).toEqual([]);
   });
 
+  it("treats an emptied-out list as empty, not as damaged", () => {
+    // What a person is left with after deleting the last entry by hand.
+    const dir = withBindings(["version: 1", "bindings:", ""].join("\n"));
+
+    expect(inspectProjectBindings(dir).status).toBe("parsed");
+    expect(() => writeProjectBinding({ workspace: "git:x/y", key: "K" }, dir)).not.toThrow();
+    expect(readProjectBindings(dir)).toEqual([{ workspace: "git:x/y", key: "K" }]);
+  });
+
   it("never writes credential material", () => {
     const dir = home();
     writeProjectBinding({ workspace: "git:github.com/acme/web", key: "WEB" }, dir);

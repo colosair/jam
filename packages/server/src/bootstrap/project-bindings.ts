@@ -79,8 +79,11 @@ export function inspectProjectBindings(home?: string): BindingsInspection {
     };
   }
 
-  const list = (raw as { bindings?: unknown }).bindings;
-  if (list !== undefined && !Array.isArray(list)) {
+  // `bindings:` with nothing after it parses as null, which is what a person
+  // is left with after deleting the last entry by hand. That is an empty list,
+  // not a damaged file - refusing to write there would be a dead end.
+  const list = (raw as { bindings?: unknown }).bindings ?? [];
+  if (!Array.isArray(list)) {
     return { path, status: "unreadable", bindings: [], reason: "`bindings` is not a list" };
   }
 

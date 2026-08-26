@@ -11,7 +11,10 @@ import { runHealthGate } from "../bootstrap/boot-health-gate.js";
 export async function doctor(cwd?: string): Promise<number> {
   let deps: Awaited<ReturnType<typeof buildDeps>>;
   try {
-    deps = await buildDeps({ cwd });
+    // Optional fallback: doctor reports what `jam serve` would run with -
+    // including a key that comes from this user's binding rather than from a
+    // file in the repository - and never refuses to load.
+    deps = await buildDeps({ cwd, keyFallback: "optional" });
   } catch (err) {
     process.stdout.write(`[FAIL] Project config - ${toJamError(err).message}\n`);
     return 1;

@@ -21,12 +21,20 @@ export type ResolvedProjectConfig = {
 export type ResolveConfigOptions = {
   cwd?: string;
   /**
-   * When no config file exists, allow an explicitly supplied key (flag, env,
-   * preset) to stand in. Resolution only - nothing is written either way.
-   * `jam serve` passes true; the read-only commands leave it off.
+   * What to do when the project has no config file.
+   *
+   * - `"required"` - fall back to an explicit key (flag, env, personal
+   *   binding, preset) and throw JAM_SETUP_REQUIRED when none applies.
+   *   `jam serve` cannot start without one.
+   * - `"optional"` - resolve the same way, but fall back to schema defaults
+   *   instead of throwing. `jam doctor` reports the state of the machine;
+   *   refusing to load would leave it with nothing to report.
+   * - absent - no fallback at all.
+   *
+   * Resolution either way. Nothing here is ever written.
    */
-  allowKeyFallback?: boolean;
-  /** `--project` override, only consulted when `allowKeyFallback` is true. */
+  keyFallback?: "required" | "optional";
+  /** `--project` override, only consulted when `keyFallback` is set. */
   explicitKey?: string;
   /** Injected by tests so a decision never depends on the machine's JAM_PROJECT_KEY. */
   env?: NodeJS.ProcessEnv;
@@ -59,7 +67,7 @@ export function resolveProjectConfig(options: ResolveConfigOptions = {}): Resolv
     return { config: loaded.config, configPath: loaded.path, root };
   }
 
-  if (!options.allowKeyFallback) {
+  if (!options.keyFallback) {
     const loaded = loadConfig(cwd);
     return { config: loaded.config, configPath: loaded.path, root };
   }
@@ -81,6 +89,10 @@ export function resolveProjectConfig(options: ResolveConfigOptions = {}): Resolv
     ...(options.presetsPath ? { presetsPath: options.presetsPath } : {}),
   });
   if (!decision) {
+    if (options.keyFallback === "optional") {
+      const loaded = loadConfig(cwd);
+      return { config: loaded.config, configPath: loaded.path, root };
+    }
     throw new JamError(
       "JAM_SETUP_REQUIRED",
       `No .jira-agent/project.yaml found under ${root}, and no project key could be determined safely (no --project, no JAM_PROJECT_KEY, no matching preset). Run \`jam setup --project <KEY>\`.`,

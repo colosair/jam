@@ -29,10 +29,11 @@ export type BuildDepsOptions = {
   /** Injected by tests to bypass the real process/registry credential lookup. */
   credentials?: CredentialPort;
   /**
-   * Let an explicit key (flag, env, preset) stand in when the project has no
-   * config file. Nothing is written either way - see resolveProjectConfig.
+   * Whether an explicit key (flag, env, personal binding, preset) may stand in
+   * when the project has no config file, and whether its absence is fatal.
+   * Nothing is written either way - see resolveProjectConfig.
    */
-  allowKeyFallback?: boolean;
+  keyFallback?: "required" | "optional";
   /** `--project` override, passed through from `jam setup`. */
   explicitKey?: string;
   /** Injected by tests so a decision never depends on the machine's environment. */
@@ -56,7 +57,7 @@ export type BuildDepsOptions = {
 export async function buildDeps(options: BuildDepsOptions = {}): Promise<JamDeps> {
   const resolved = resolveProjectConfig({
     cwd: options.cwd,
-    allowKeyFallback: options.allowKeyFallback ?? false,
+    ...(options.keyFallback ? { keyFallback: options.keyFallback } : {}),
     explicitKey: options.explicitKey,
     ...(options.env ? { env: options.env } : {}),
     ...(options.presetsPath ? { presetsPath: options.presetsPath } : {}),
