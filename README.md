@@ -2,6 +2,10 @@
 
 An agent-facing Jira access layer for Claude Code and Codex.
 
+[![npm](https://img.shields.io/npm/v/@jam-mcp/bootstrap)](https://www.npmjs.com/package/@jam-mcp/bootstrap)
+[![node](https://img.shields.io/node/v/@jam-mcp/server)](https://nodejs.org)
+[![license](https://img.shields.io/npm/l/@jam-mcp/server)](LICENSE)
+
 JAM is not a thin Jira wrapper. It exposes **three** read tools and takes over the
 decisions an agent should not be making: which Jira fields to request, when to
 paginate, when to read the comment thread, and what to do when a result is too
@@ -48,6 +52,15 @@ Two rules make this work:
 ```
 
 ## Setup
+
+You need Node.js 20 or newer. Nothing has to be installed globally — every
+command below reaches for a published package through `npx` as it needs one:
+[`@jam-mcp/bootstrap`](https://www.npmjs.com/package/@jam-mcp/bootstrap) for the
+zero-install first run,
+[`@jam-mcp/launcher`](https://www.npmjs.com/package/@jam-mcp/launcher) as the
+runtime entry your coding agent registers, and
+[`@jam-mcp/server`](https://www.npmjs.com/package/@jam-mcp/server) for JAM
+itself — the MCP server, the setup core and the `jam` CLI.
 
 **For a person**, once per machine:
 
