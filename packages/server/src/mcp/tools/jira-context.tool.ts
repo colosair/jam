@@ -10,6 +10,8 @@ Use for: "can I start this", "what is blocking it", "what should I do first", pa
 
 Returns everything jira_search returns plus issue type, parent, subtasks, issue links (with blocksThisIssue flagged) and the project's whitelisted custom fields. It does NOT return the comment thread - if the question is whether something was agreed, approved, or finished, use jira_full instead.
 
+This is the Jira-recorded evidence relevant to readiness, blockers, dependencies and priority - not a readiness verdict. blocksThisIssue reports how Jira words a link; an empty links array means Jira holds no visible link for you, not that nothing blocks the work. Repository and external sources are not evaluated.
+
 Pass every key you care about in one call; they are fetched in a single batched round trip. Check meta.complete and meta.missingKeys before drawing conclusions.`;
 
 export function registerJiraContext(server: McpServer, deps: JamDeps): void {

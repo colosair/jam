@@ -1,6 +1,6 @@
 import type { JamDeps } from "../deps.js";
 import type { FullIssueContext } from "../domain/context.js";
-import { nowIso, type CompletenessMeta } from "../domain/completeness.js";
+import { JIRA_EVIDENCE, nowIso, type CompletenessMeta } from "../domain/completeness.js";
 import type { IssueSummary } from "../domain/issue.js";
 import { fieldsFor } from "../policy/field-policy.js";
 import { paginationFor, type SearchScope } from "../policy/pagination-policy.js";
@@ -61,6 +61,7 @@ export async function searchIssues(
   const morePagesAvailable = Boolean(pageToken);
 
   const meta: CompletenessMeta = {
+    ...JIRA_EVIDENCE,
     level: "search",
     complete: !morePagesAvailable,
     fetchedAt: nowIso(),

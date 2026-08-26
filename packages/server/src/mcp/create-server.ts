@@ -27,6 +27,8 @@ export function createServer(deps: JamDeps): McpServer {
         "- agreement, contract, approval, closure -> jira_full",
         "Never treat a jira_search result as complete issue context.",
         "Every result carries a `meta` block; if meta.complete is false the answer is partial and must be reported as such.",
+        "meta.complete describes JAM's retrieval, not the project: it means the Jira read finished with no known loss, never that Jira holds the whole story.",
+        "meta.evidenceScope and meta.limitations name what was not evaluated - the repository and every external source among them. Judge Jira evidence from these results; judge execution reality elsewhere.",
       ].join("\n"),
     },
   );

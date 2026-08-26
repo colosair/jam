@@ -1,5 +1,5 @@
 import type { JamDeps } from "../deps.js";
-import { nowIso, type CompletenessMeta } from "../domain/completeness.js";
+import { JIRA_EVIDENCE, nowIso, type CompletenessMeta } from "../domain/completeness.js";
 import type { FullIssueContext, IssueContext } from "../domain/context.js";
 import { JamError } from "../domain/errors.js";
 import { fieldsFor } from "../policy/field-policy.js";
@@ -34,6 +34,7 @@ export async function getIssueContext(
   const issues = budget.issues.map(toContext);
 
   const meta: CompletenessMeta = {
+    ...JIRA_EVIDENCE,
     level: "context",
     complete: budget.complete && fetched.missingKeys.length === 0,
     fetchedAt: nowIso(),

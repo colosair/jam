@@ -1,6 +1,6 @@
 import type { JamDeps } from "../deps.js";
-import { nowIso, type CompletenessMeta } from "../domain/completeness.js";
-import type { FullIssueContext } from "../domain/context.js";
+import { JIRA_EVIDENCE, nowIso, type CompletenessMeta } from "../domain/completeness.js";
+import type { FullIssueContext, NormalizedComment } from "../domain/context.js";
 import { fieldsFor } from "../policy/field-policy.js";
 import { applyOutputBudget } from "../policy/output-budget-policy.js";
 import { normalizeKeys, toContext, MAX_KEYS_PER_CALL } from "./get-issue-context.js";
@@ -62,6 +62,7 @@ export async function getFullIssueContext(
   const commentsComplete = budget.commentsComplete && partialThreads.length === 0;
 
   const meta: CompletenessMeta = {
+    ...JIRA_EVIDENCE,
     level: "full",
     complete:
       budget.complete && fetched.missingKeys.length === 0 && partialThreads.length === 0,
@@ -120,5 +121,31 @@ function toFull(issue: FullIssueContext): FullIssueContext {
   };
   if (issue.description) full.description = issue.description;
   if (issue.history?.length) full.history = issue.history;
+  const latest = latestCommentAt(issue.comments);
+  if (latest) full.latestCommentAt = latest;
   return full;
+}
+
+/**
+ * Max, not last: the first page arrives embedded in the bulk fetch in
+ * whatever order Jira returned it, and the output budget drops from the front,
+ * so position says nothing about recency. An edit counts - `updated` is only
+ * present when it differs from `created`.
+ */
+function latestCommentAt(comments: NormalizedComment[]): string | undefined {
+  let latest: string | undefined;
+  let latestMs = Number.NEGATIVE_INFINITY;
+  for (const comment of comments) {
+    const at = comment.updated ?? comment.created;
+    if (!at) continue;
+    // Parsed rather than compared as text: Jira stamps an offset, and
+    // "...+0900" sorts below "...Z" as a string while being later in time.
+    const ms = Date.parse(at);
+    if (Number.isNaN(ms)) continue;
+    if (ms > latestMs) {
+      latestMs = ms;
+      latest = at;
+    }
+  }
+  return latest;
 }

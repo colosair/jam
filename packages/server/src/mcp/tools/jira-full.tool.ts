@@ -12,6 +12,8 @@ Returns everything jira_context returns plus description and every comment (norm
 
 Ask for as few keys as possible: with several issues at once the output budget may drop the oldest comments. Always check meta.commentsComplete and meta.complete - if either is false, the thread you are reading is partial and a "yes, it is agreed" answer is not supported.
 
+This is the Jira-recorded evidence relevant to agreement, contract, approval and closure. Repository and external sources are not evaluated.
+
 Absence of evidence in Jira is not evidence of absence. A complete read with no supporting comments proves only what Jira holds. If the issue references an external canonical source (an MR/PR, a spec or contract document, Confluence, another issue), do not conclude "not agreed", "not approved" or "cannot start": check that source if you can reach it, and otherwise report that Jira alone cannot settle the question and name the source that must be checked. Issues that reference no external source do not warrant an open-ended search.`;
 
 export function registerJiraFull(server: McpServer, deps: JamDeps): void {

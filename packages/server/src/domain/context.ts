@@ -25,9 +25,18 @@ export type RelevantHistory = {
   to?: string;
 };
 
-/** FULL level: enough to judge agreement, contract, approval, closure. */
+/** FULL level: the Jira record for agreement, contract, approval, closure. */
 export type FullIssueContext = IssueContext & {
   description?: string;
   comments: NormalizedComment[];
   history?: RelevantHistory[];
+  /**
+   * The most recent timestamp on any comment retrieved, edits included.
+   *
+   * A raw fact, not a verdict: how old is too old differs per team, so JAM
+   * reports when the thread last moved and leaves "stale" to the caller.
+   * Costs no extra Jira call - it is computed from comments already fetched,
+   * and is therefore as complete as `commentsComplete` says they are.
+   */
+  latestCommentAt?: string;
 };
