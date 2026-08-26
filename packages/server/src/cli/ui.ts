@@ -80,6 +80,7 @@ export class CancelledError extends Error {
  * just no one to answer, and the fix is a flag rather than a diagnosis.
  */
 export class NonInteractiveError extends Error {
+  /** A whole instruction, printed as given - not a bare flag or command. */
   readonly flagHint: string;
 
   constructor(question: string, flagHint: string) {
@@ -105,7 +106,9 @@ export function reportPromptError(err: unknown, ui: Ui): number | undefined {
   if (err instanceof NonInteractiveError) {
     ui.line();
     ui.failure(err.message);
-    ui.next(`Run:  ${err.flagHint}`);
+    // Printed verbatim. A hint that is a sentence must not be dressed up as a
+    // command the user could paste, and JAM cannot know their shell anyway.
+    ui.next(err.flagHint);
     return 1;
   }
   return undefined;

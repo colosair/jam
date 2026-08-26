@@ -1,6 +1,13 @@
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { Ui, colorEnabled, interactiveEnabled, SYMBOLS } from "../../src/cli/ui.js";
+import {
+  NonInteractiveError,
+  reportPromptError,
+  Ui,
+  colorEnabled,
+  interactiveEnabled,
+  SYMBOLS,
+} from "../../src/cli/ui.js";
 
 /** A writable that records everything, standing in for stdout. */
 function captureStream(isTTY: boolean): NodeJS.WriteStream & { text: () => string } {
@@ -123,6 +130,27 @@ describe("Ui rendering", () => {
       flagHint: "jam runtime use package",
     });
     await expect(rejection).rejects.toThrow(/cannot be asked without a terminal/);
+  });
+});
+
+describe("reportPromptError", () => {
+  it("prints the hint as given, without dressing it up as a command", () => {
+    const stream = captureStream(false);
+    const ui = new Ui({ stream, input: fakeInput(false), color: false, interactive: false });
+
+    const code = reportPromptError(
+      new NonInteractiveError(
+        "Atlassian API token",
+        "Set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN instead.",
+      ),
+      ui,
+    );
+
+    expect(code).toBe(1);
+    expect(stream.text()).toContain("Set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN instead.");
+    // "Run:" in front of a sentence promises something pasteable, and JAM does
+    // not know this shell. Command-shaped hints carry their own prefix.
+    expect(stream.text()).not.toContain("Run:");
   });
 });
 

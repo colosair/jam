@@ -121,7 +121,7 @@ async function runStatusMenu(
       { value: "repair", label: "Repair project setup", hint: "Re-apply project.yaml and .mcp.json wiring." },
       { value: "exit", label: "Exit", hint: "" },
     ],
-    "--json for a non-interactive status",
+    "Run: jam setup plan --json",
   );
 
   switch (action) {
@@ -181,7 +181,7 @@ async function chooseRuntime(ui: Ui, options: WizardOptions): Promise<void> {
       },
       { value: "development", label: "Develop JAM", hint: "Run a local source checkout." },
     ],
-    "jam runtime use package",
+    "Run: jam runtime use package",
   );
 
   if (mode === "package") {

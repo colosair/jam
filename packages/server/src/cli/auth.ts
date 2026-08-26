@@ -38,7 +38,11 @@ export type AuthOptions = {
 };
 
 const TOKEN_URL = "https://id.atlassian.com/manage-profile/security/api-tokens";
-const ENV_HINT = "set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN instead";
+// A sentence, not a command: JAM does not know whether this shell wants
+// `export`, `set` or `$env:`, and printing one of them as if it were runnable
+// is worse than describing what has to end up in the environment. Matches the
+// wording the secret store already uses for the same situation.
+const ENV_HINT = "Set JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN instead.";
 
 /**
  * Bounded rather than open: a run whose input has stopped producing usable
@@ -70,7 +74,7 @@ async function askUntilValid<T>(
 function giveUp(ui: Ui, what: string): number {
   ui.line();
   ui.failure(`No usable ${what} after ${MAX_PROMPT_ATTEMPTS} attempts`);
-  ui.next(`Run:  ${ENV_HINT}`);
+  ui.next(ENV_HINT);
   return 1;
 }
 
@@ -94,14 +98,14 @@ export async function authLoginCommand(options: AuthOptions = {}): Promise<numbe
     // saying "no store" when one was switched off sends the user hunting.
     if (secretStoreDisabled()) {
       ui.failure("Secret store disabled by JAM_DISABLE_SECRET_STORE");
-      ui.line("  That variable is for isolated test sandboxes. Unset it and run this again,");
-      ui.line(`  or ${ENV_HINT}.`);
+      ui.line("  That variable is for isolated test sandboxes. Unset it and run this again.");
+      ui.next(ENV_HINT);
       return 1;
     }
     ui.failure("No usable secret store was found on this system");
     ui.line("  JAM stores credentials where the operating system holds them for you,");
     ui.line("  so an editor launched from a Dock or Start menu can still read them.");
-    ui.next(`Run:  ${ENV_HINT}`);
+    ui.next(ENV_HINT);
     return 1;
   }
 
@@ -132,7 +136,7 @@ export async function authLoginCommand(options: AuthOptions = {}): Promise<numbe
   const apiToken = await ui.secret("Atlassian API token", ENV_HINT);
   if (!apiToken) {
     ui.failure("An API token is required");
-    ui.next(`Run:  ${ENV_HINT}`);
+    ui.next(ENV_HINT);
     return 1;
   }
 
@@ -156,7 +160,7 @@ export async function authLoginCommand(options: AuthOptions = {}): Promise<numbe
   } catch (err) {
     ui.failure("Could not store the credentials");
     ui.line(`  ${err instanceof Error ? err.message : String(err)}`);
-    if (err instanceof SecretStoreUnavailableError) ui.next(`Run:  ${err.remedy}`);
+    if (err instanceof SecretStoreUnavailableError) ui.next(err.remedy);
     return 1;
   }
 
