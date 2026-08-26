@@ -101,7 +101,11 @@ export async function setupApplyCommand(options: AgentOptions = {}): Promise<num
     emitJson({ ...(await withProjects(plan, options)), changesApplied: false });
     return 1;
   }
-  if (plan.code === "JAM_PROJECT_CONFIG_INVALID" || plan.code === "JAM_MCP_CONFIG_UNREADABLE") {
+  if (
+    plan.code === "JAM_PROJECT_CONFIG_INVALID" ||
+    plan.code === "JAM_MCP_CONFIG_UNREADABLE" ||
+    plan.code === "JAM_BINDINGS_UNREADABLE"
+  ) {
     emitJson({ ...plan, changesApplied: false });
     return 1;
   }
@@ -132,7 +136,11 @@ export async function setupAgentCommand(options: AgentOptions = {}): Promise<num
     emitJson({ ...(await withProjects(plan, options)), changesApplied: false });
     return 1;
   }
-  if (plan.code === "JAM_PROJECT_CONFIG_INVALID" || plan.code === "JAM_MCP_CONFIG_UNREADABLE") {
+  if (
+    plan.code === "JAM_PROJECT_CONFIG_INVALID" ||
+    plan.code === "JAM_MCP_CONFIG_UNREADABLE" ||
+    plan.code === "JAM_BINDINGS_UNREADABLE"
+  ) {
     emitJson({ ...plan, changesApplied: false });
     return 1;
   }
