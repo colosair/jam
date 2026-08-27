@@ -25,6 +25,7 @@ export const EXISTING_ISSUE_OPERATIONS = [
   "comment.add",
   "field.update",
   "status.transition",
+  "assignee.update",
 ] as const;
 
 /** The operations the public MCP surface accepts. Nothing else is reachable. */
@@ -56,6 +57,33 @@ export type FieldUpdateInput = {
 };
 
 export type StatusTransitionInput = { status: string };
+
+/**
+ * Who to assign an issue to, as a person would say it.
+ *
+ * A display name, or an accountId if the caller already has one. Either way it
+ * is a selector, not an identifier: nothing here is ever sent to Jira. It is
+ * resolved against Jira's own user directory first, and what gets written is
+ * the accountId that resolution produced.
+ */
+export type AssigneeUpdateInput = { assignee: string };
+
+/**
+ * A Jira user as JAM identifies them.
+ *
+ * `accountId` is the identity; `displayName` is for the human reading the
+ * receipt. They are not interchangeable - two people can share a display name,
+ * which is precisely why an assignment is verified on the accountId.
+ */
+export type AssigneeRef = {
+  accountId: string;
+  displayName: string;
+};
+
+/** A user Jira offered in answer to a search. */
+export type AssigneeCandidate = AssigneeRef & {
+  active: boolean;
+};
 
 /**
  * Fields `issue.create` may set.
@@ -90,6 +118,7 @@ export type WriteInput =
   | CommentAddInput
   | FieldUpdateInput
   | StatusTransitionInput
+  | AssigneeUpdateInput
   | CreateIssueInput;
 
 /** An issue type as Jira offers it for one project, right now. */
@@ -176,6 +205,14 @@ export type ExistingIssueWritePlan = WritePlanCommon & {
    * from a status name.
    */
   transition?: JiraTransition;
+  /**
+   * Who the issue was assigned to when the plan was made, by identity.
+   *
+   * Present only for `assignee.update`, and separate from `before` because
+   * `before` is what a receipt shows a human while this is what apply compares.
+   * `undefined` means the issue was unassigned.
+   */
+  baseAssigneeAccountId?: string;
 };
 
 /**
@@ -206,6 +243,7 @@ export type WriteMutation =
   | { kind: "comment"; text: string }
   | { kind: "fields"; fields: Record<string, unknown> }
   | { kind: "transition"; transitionId: string }
+  | { kind: "assignee"; accountId: string }
   | { kind: "create"; fields: Record<string, unknown> };
 
 /** What `jira_write_plan` returns. The mutation itself is not exposed. */

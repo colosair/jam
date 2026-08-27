@@ -32,6 +32,17 @@ export type GetIssueRequest = {
 export type GetIssueResult = {
   /** Absent when Jira has no such issue, or this account cannot see it. */
   issue?: FullIssueContext;
+  /**
+   * Who the issue is assigned to, by identity rather than by name.
+   *
+   * Here rather than on the issue because only the write plane needs it. Two
+   * people can share a display name, so `assignee` cannot settle whether an
+   * assignment landed on the right person - and the read tools have no use for
+   * an accountId, so their payload does not grow one.
+   *
+   * Absent when the issue is unassigned, or when the field was not requested.
+   */
+  assigneeAccountId?: string;
   responseBytes: number;
 };
 

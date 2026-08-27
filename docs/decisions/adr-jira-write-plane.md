@@ -70,6 +70,23 @@ document: an unrelated optional field appearing on a create screen invalidates
 nothing, and treating it as though it did would make every plan on an active
 project fail.
 
+**A name is not an identity.** `assignee.update` takes what a person would
+say - a display name, or an accountId - and never sends it. Jira's user search
+is a substring match, so its answers are candidates: JAM assigns only when
+exactly one candidate matches exactly (an accountId, or a display name ignoring
+case), and refuses with the candidates attached otherwise
+(`JAM_WRITE_ASSIGNEE_NOT_FOUND`, `JAM_WRITE_ASSIGNEE_AMBIGUOUS`). One
+substring hit is Jira reporting a similarity, not identifying who was meant,
+and choosing it would cost somebody an issue assigned to the wrong colleague.
+
+Assignability is asked, not modelled: JAM does not carry a copy of Jira's
+permission scheme, so it asks whether this account may hold this issue - at
+plan time, and again immediately before the write, because a permission that
+held is not a permission that still holds. Verification compares the
+`accountId`; a display-name comparison would accept the wrong person's
+assignment as proof of the right one's, which is the failure the whole
+resolution step exists to prevent.
+
 **Confirmation is a single-issue GET.** ConsistencyPolicy's "direct issue read"
 is `JiraReadPort.getIssue` - `GET /rest/api/3/issue/{key}` - not the bulk
 `getIssues` the read tools use. A bulk endpoint takes a list and is free to

@@ -28,4 +28,12 @@ export interface JiraWritePort {
   /** Transitions Jira offers for this issue right now, for this account. */
   getTransitions(key: string): Promise<JiraTransition[]>;
   transitionIssue(key: string, transitionId: string): Promise<void>;
+  /**
+   * Assign an issue to one account.
+   *
+   * By accountId, never by name: Jira Cloud identifies users by account, and a
+   * display name is a label two people can share. Which account it is was
+   * settled during planning.
+   */
+  assignIssue(key: string, accountId: string): Promise<void>;
 }

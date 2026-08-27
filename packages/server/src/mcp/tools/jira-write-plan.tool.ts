@@ -13,11 +13,14 @@ Operations on an issue that already exists - these need \`key\`:
 - comment.add        input: { "text": "..." }        plain text; JAM converts it, do not send ADF
 - field.update       input: { "summary"?, "priority"?, "labels"?, "components"? }
 - status.transition  input: { "status": "Done" }     JAM asks Jira which transitions exist and matches yours
+- assignee.update    input: { "assignee": "..." }     a display name or an accountId; JAM resolves it against Jira's own directory
 
 Creating an issue - no \`key\`, because there is no issue yet:
 - issue.create       input: { "issueType": "Task", "summary": "...", "description"?, "priority"?, "labels"?, "components"? }
 
 issue.create goes into the project this workspace is bound to; the project is not a parameter. Planning reads Jira's create schema for that project first, so an issue type Jira does not offer, a priority or component outside its allowed values, and a project whose create screen requires a field JAM cannot set are all refused here rather than attempted. \`description\` is plain text, like a comment. Not settable in this version: assignee, reporter, parent, custom fields, attachments.
+
+assignee.update never sends the name you pass. JAM searches Jira's user directory, and assigns only when exactly one user matches your string exactly - an exact display name (case-insensitive) or an accountId. A partial match is Jira reporting a similarity, not identifying a person, so several matches or none come back as a refusal with the candidates attached: name one exactly, or pass their accountId. JAM also checks Jira offers that person as an assignee for this issue, before planning and again before writing, and confirms the result by accountId rather than by name. Unassigning, and setting an assignee while creating, are not in this version.
 
 Writes are limited to the Jira project this workspace is bound to; a key from another project is refused rather than attempted.
 
@@ -41,7 +44,7 @@ export function registerJiraWritePlan(server: McpServer, deps: JamDeps): void {
           .min(1)
           .optional()
           .describe(
-            'Issue key, e.g. "PROJECT-123". Required for comment.add, field.update and status.transition; omit for issue.create, which has no issue yet. Must be in the configured project.',
+            'Issue key, e.g. "PROJECT-123". Required for every operation that changes an existing issue; omit for issue.create, which has no issue yet. Must be in the configured project.',
           ),
         operation: z
           .enum(WRITE_OPERATIONS)
@@ -60,6 +63,13 @@ export function registerJiraWritePlan(server: McpServer, deps: JamDeps): void {
               .min(1)
               .optional()
               .describe("status.transition: the status to move to, e.g. \"Done\"."),
+            assignee: z
+              .string()
+              .min(1)
+              .optional()
+              .describe(
+                "assignee.update: who to assign, as an exact display name or an accountId. Not settable through field.update.",
+              ),
             issueType: z
               .string()
               .min(1)
@@ -80,7 +90,7 @@ export function registerJiraWritePlan(server: McpServer, deps: JamDeps): void {
               .describe("Component names. Replaces the whole component set."),
           })
           .describe(
-            `Operation input. field.update accepts only ${WRITABLE_FIELDS.join(", ")}; issue.create accepts only ${CREATABLE_FIELDS.join(", ")}. Custom fields and assignee are not writable by either.`,
+            `Operation input. field.update accepts only ${WRITABLE_FIELDS.join(", ")}; issue.create accepts only ${CREATABLE_FIELDS.join(", ")}. Custom fields are not writable by either, and the assignee is changed through assignee.update rather than through field.update.`,
           ),
       },
       // Planning reads Jira and decides; it never mutates. Hosts are free to

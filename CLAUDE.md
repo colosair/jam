@@ -43,9 +43,29 @@ Show the user what the plan says before applying it. The plan's `before` and
 `intendedAfter` are the whole point of the split: they are what makes the change
 reviewable while it is still cheap to abandon.
 
-Four operations, and nothing else is writable: `comment.add` (plain text),
+Five operations, and nothing else is writable: `comment.add` (plain text),
 `field.update` (summary, priority, labels, components), `status.transition`,
-and `issue.create`. Writes are confined to the configured Jira project.
+`assignee.update`, and `issue.create`. Writes are confined to the configured
+Jira project.
+
+`assignee.update` takes `key` and `input.assignee` - a display name, or an
+accountId. **Never assume JAM will pick from a partial match.** It searches
+Jira's directory and assigns only on an exact display name (case-insensitive)
+or an exact accountId, because Jira's user search is a substring match and one
+row is a similarity, not an identification. Failures to relay rather than
+retry:
+
+- `JAM_WRITE_ASSIGNEE_NOT_FOUND` - nobody matches exactly. `details.candidates`
+  carries who Jira did find; show them and ask which one, or pass an accountId.
+- `JAM_WRITE_ASSIGNEE_AMBIGUOUS` - two people share that display name. The
+  candidates come back with their accountIds; one of those is the answer.
+- `JAM_WRITE_ASSIGNEE_NOT_ASSIGNABLE` - the account is deactivated, or Jira
+  does not offer them as an assignee for this issue. Not something to retry.
+- `JAM_WRITE_ASSIGNEE_ALREADY_SET` - they already hold it. Nothing to do.
+
+Not in this version: unassigning, setting an assignee while creating, and
+reporter. `field.update` still refuses `assignee` - assignment goes through
+`assignee.update` only.
 
 `issue.create` has no `key` - there is no issue yet - and takes no project
 either: the new issue goes into the project this workspace is bound to. It

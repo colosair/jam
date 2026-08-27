@@ -162,7 +162,7 @@ async function verify(
     );
   }
 
-  const issue = await readIssue(deps, issueKey);
+  const { issue } = await readIssue(deps, issueKey);
 
   const observed: Record<string, unknown> = {};
   for (const field of Object.keys(plan.intendedAfter)) {

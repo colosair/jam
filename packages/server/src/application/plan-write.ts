@@ -2,6 +2,7 @@ import type { JamDeps } from "../deps.js";
 import type { FullIssueContext } from "../domain/context.js";
 import { JamError } from "../domain/errors.js";
 import type {
+  AssigneeUpdateInput,
   CommentAddInput,
   ExistingIssueOperation,
   ExistingIssueWritePlan,
@@ -20,6 +21,11 @@ import {
   PLAN_TTL_MS,
   resolveTransition,
 } from "../policy/write-policy.js";
+import {
+  assertAssignable,
+  assertNotAlreadyAssigned,
+  resolveAssignee,
+} from "../policy/assignee-policy.js";
 import { planCreateIssue } from "./plan-create-issue.js";
 
 export type PlanWriteRequest = {
@@ -64,13 +70,14 @@ export async function planWrite(
   // answer.
   const input = validateInput(operation, request.input);
 
-  const issue = await readIssue(deps, issueKey);
+  const snapshot = await readIssue(deps, issueKey);
+  const issue = snapshot.issue;
 
-  const { before, intendedAfter, mutation, transition } = await describe(
+  const { before, intendedAfter, mutation, transition, baseAssigneeAccountId } = await describe(
     deps,
     operation,
     issueKey,
-    issue,
+    snapshot,
     input,
   );
 
@@ -86,6 +93,7 @@ export async function planWrite(
     createdAt: createdAt.toISOString(),
     expiresAt: new Date(createdAt.getTime() + PLAN_TTL_MS).toISOString(),
     ...(transition ? { transition } : {}),
+    ...(baseAssigneeAccountId ? { baseAssigneeAccountId } : {}),
     mutation,
   }) as ExistingIssueWritePlan;
 
@@ -116,8 +124,14 @@ export async function planWrite(
  * The one read every write goes through - the pre-write conflict check, the
  * post-write confirmation, and the post-create confirmation.
  */
-export async function readIssue(deps: JamDeps, issueKey: string): Promise<FullIssueContext> {
-  const { issue: found } = await deps.jira.getIssue({
+export type IssueSnapshot = {
+  issue: FullIssueContext;
+  /** Identity of the current assignee, which `issue.assignee` cannot supply. */
+  assigneeAccountId?: string;
+};
+
+export async function readIssue(deps: JamDeps, issueKey: string): Promise<IssueSnapshot> {
+  const { issue: found, assigneeAccountId } = await deps.jira.getIssue({
     key: issueKey,
     // `issuetype` and `description` are here for creation's verification step,
     // which has to confirm the issue Jira made is the one that was asked for.
@@ -129,6 +143,7 @@ export async function readIssue(deps: JamDeps, issueKey: string): Promise<FullIs
       "status",
       "issuetype",
       "description",
+      "assignee",
       "priority",
       "labels",
       "components",
@@ -143,7 +158,7 @@ export async function readIssue(deps: JamDeps, issueKey: string): Promise<FullIs
       { issueKey },
     );
   }
-  return found;
+  return { issue: found, ...(assigneeAccountId ? { assigneeAccountId } : {}) };
 }
 
 /**
@@ -199,6 +214,17 @@ function validateInput(operation: ExistingIssueOperation, raw: Record<string, un
       }
       return { status: status.trim() };
     }
+    case "assignee.update": {
+      const assignee = (raw as AssigneeUpdateInput).assignee;
+      if (typeof assignee !== "string" || assignee.trim().length === 0) {
+        throw new JamError(
+          "JAM_WRITE_OPERATION_NOT_ALLOWED",
+          "assignee.update needs non-empty `input.assignee` - a display name, or an accountId.",
+          { operation },
+        );
+      }
+      return { assignee: assignee.trim() };
+    }
   }
 }
 
@@ -206,14 +232,16 @@ async function describe(
   deps: JamDeps,
   operation: ExistingIssueOperation,
   issueKey: string,
-  issue: FullIssueContext,
+  snapshot: IssueSnapshot,
   input: WriteInput,
 ): Promise<{
   before: Record<string, unknown>;
   intendedAfter: Record<string, unknown>;
   mutation: WriteMutation;
   transition?: ExistingIssueWritePlan["transition"];
+  baseAssigneeAccountId?: string;
 }> {
+  const issue = snapshot.issue;
   switch (operation) {
     case "comment.add": {
       const { text } = input as CommentAddInput;
@@ -253,6 +281,39 @@ async function describe(
         intendedAfter: { status: transition.to },
         mutation: { kind: "transition", transitionId: transition.id },
         transition,
+      };
+    }
+
+    case "assignee.update": {
+      const { assignee: requested } = input as AssigneeUpdateInput;
+
+      // Ask Jira who this is, and decide from what it says. The requested
+      // string never reaches a mutation: what gets written is the accountId
+      // that resolution settled on, and resolution refuses rather than picks
+      // when the answer is not one person.
+      const candidates = await deps.jiraAssignees.searchUsers(requested);
+      const target = resolveAssignee(requested, candidates);
+
+      // Two independent refusals, in the order that costs least. Already-set
+      // needs no Jira call; assignability does.
+      assertNotAlreadyAssigned(issueKey, snapshot.assigneeAccountId, target);
+      assertAssignable(
+        issueKey,
+        target,
+        await deps.jiraAssignees.isAssignable(issueKey, target.accountId),
+      );
+
+      return {
+        before: {
+          assignee: snapshot.assigneeAccountId
+            ? { accountId: snapshot.assigneeAccountId, displayName: issue.assignee ?? "" }
+            : null,
+        },
+        intendedAfter: { assignee: target },
+        mutation: { kind: "assignee", accountId: target.accountId },
+        ...(snapshot.assigneeAccountId
+          ? { baseAssigneeAccountId: snapshot.assigneeAccountId }
+          : {}),
       };
     }
   }

@@ -35,6 +35,14 @@ export const JAM_ERROR_CODES = [
   "JAM_WRITE_REQUIRED_FIELD_UNSUPPORTED",
   "JAM_WRITE_VALUE_NOT_ALLOWED",
   "JAM_WRITE_SCHEMA_CHANGED",
+  // Assignment. A name is not an identity, and Jira decides who may hold an
+  // issue - so "nobody by that name", "several people by that name", "that
+  // person may not hold this issue" and "they already do" are four different
+  // things for a caller to do next, and none of them is "try again".
+  "JAM_WRITE_ASSIGNEE_NOT_FOUND",
+  "JAM_WRITE_ASSIGNEE_AMBIGUOUS",
+  "JAM_WRITE_ASSIGNEE_NOT_ASSIGNABLE",
+  "JAM_WRITE_ASSIGNEE_ALREADY_SET",
   "JAM_WRITE_PLAN_NOT_FOUND",
   "JAM_WRITE_PLAN_EXPIRED",
   "JAM_WRITE_CONFLICT",

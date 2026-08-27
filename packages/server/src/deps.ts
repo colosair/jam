@@ -8,6 +8,7 @@ import type { ProjectConfig } from "./config/schema.js";
 import type { CachePort } from "./ports/cache.port.js";
 import type { CredentialPort } from "./ports/credentials.port.js";
 import type { JiraReadPort } from "./ports/jira-read.port.js";
+import type { JiraAssigneeResolutionPort } from "./ports/jira-assignee-resolution.port.js";
 import type { JiraCreateMetadataPort } from "./ports/jira-create-metadata.port.js";
 import type { JiraWritePort } from "./ports/jira-write.port.js";
 import { WritePlanStore } from "./application/write-plan-store.js";
@@ -35,6 +36,12 @@ export type JamDeps = {
    */
   jiraCreateMetadata: JiraCreateMetadataPort;
   /**
+   * Who a name refers to, and who may hold an issue. A fourth port for the
+   * same reason as the third: it reads a directory rather than an issue, and
+   * it mutates nothing.
+   */
+  jiraAssignees: JiraAssigneeResolutionPort;
+  /**
    * Plans awaiting apply. Lives for the life of this server process - see
    * WritePlanStore for why it is not persisted.
    */
@@ -52,6 +59,8 @@ export type BuildDepsOptions = {
   jiraWrite?: JiraWritePort;
   /** Injected by tests so create metadata comes from a fixture, not a site. */
   jiraCreateMetadata?: JiraCreateMetadataPort;
+  /** Injected by tests so user resolution never reaches a real directory. */
+  jiraAssignees?: JiraAssigneeResolutionPort;
   /** Injected by tests to bypass the real process/registry credential lookup. */
   credentials?: CredentialPort;
   /**
@@ -117,6 +126,14 @@ export async function buildDeps(options: BuildDepsOptions = {}): Promise<JamDeps
     jiraCreateMetadata = new JiraCloudCreateMetadataAdapter(credentials);
   }
 
+  let jiraAssignees = options.jiraAssignees;
+  if (!jiraAssignees) {
+    const { JiraCloudAssigneeResolutionAdapter } = await import(
+      "./adapters/jira-cloud/jira-assignee-resolution.adapter.js"
+    );
+    jiraAssignees = new JiraCloudAssigneeResolutionAdapter(credentials);
+  }
+
   return {
     config: resolved.config,
     configPath: resolved.configPath,
@@ -124,6 +141,7 @@ export async function buildDeps(options: BuildDepsOptions = {}): Promise<JamDeps
     jira,
     jiraWrite,
     jiraCreateMetadata,
+    jiraAssignees,
     writePlans: new WritePlanStore(),
     cache: new NoopCache(),
     telemetry,

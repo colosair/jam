@@ -67,7 +67,18 @@ export class JiraCloudReadAdapter implements JiraReadPort {
     });
 
     if (!data?.key) return { responseBytes: bytes };
-    return { issue: mapIssueWithMeta(data, this.config).issue, responseBytes: bytes };
+
+    // Read straight off the raw payload rather than through the mapper: the
+    // mapper's job is the shape the read tools see, and this identity is only
+    // for the write plane. Raw DTOs still stop here.
+    const assignee = (data.fields as { assignee?: { accountId?: unknown } } | undefined)?.assignee;
+    const accountId = typeof assignee?.accountId === "string" ? assignee.accountId : undefined;
+
+    return {
+      issue: mapIssueWithMeta(data, this.config).issue,
+      ...(accountId ? { assigneeAccountId: accountId } : {}),
+      responseBytes: bytes,
+    };
   }
 
   async getIssues(req: GetIssuesRequest): Promise<GetIssuesResult> {
