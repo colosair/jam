@@ -150,7 +150,7 @@ itself — the MCP server, the setup core and the CLI they all reach.
 **For a person**, once per machine:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.3.0 init
+npx --yes @jam-mcp/bootstrap@1.3.1 init
 ```
 
 Choose whether you're *using* JAM (runs the published package) or *developing*
@@ -164,10 +164,10 @@ installing the launcher globally, and everything it runs still goes through the
 runtime you chose above:
 
 ```bash
-npm install -g @jam-mcp/launcher@1.3.0
+npm install -g @jam-mcp/launcher@1.3.1
 ```
 
-Without it, the same commands are `npx --yes @jam-mcp/launcher@1.3.0 <command>`.
+Without it, the same commands are `npx --yes @jam-mcp/launcher@1.3.1 <command>`.
 Nothing else changes — not your editor's wiring, not a shared `.mcp.json`, not
 a teammate who never installed it.
 
@@ -208,15 +208,26 @@ to set JAM up in a project, **use the official path** rather than working out
 an installation from this README:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.3.0 setup --agent
+npx --yes @jam-mcp/bootstrap@1.3.1 setup --agent
 ```
+
+**If you are reading this inside a clone of this repository** — because someone
+handed you the GitHub URL and asked you to apply JAM — then this checkout is
+not the installation. The target is the project the user is working in: change
+to that directory and run the command above. Building this repository installs
+nothing; a development checkout is for people changing JAM itself, and belongs
+only to an explicit request to do that.
+
+Setting JAM up is local tooling, not project work. It needs no Jira issue, no
+branch, and no PR of its own — and if the user has already asked for JAM, the
+asking is done. Install, register, and verify without further confirmation.
 
 or, to inspect before acting:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.3.0 setup plan --json                     # what would change; changes nothing
-npx --yes @jam-mcp/bootstrap@1.3.0 setup apply --non-interactive --json  # execute it
-npx --yes @jam-mcp/bootstrap@1.3.0 doctor --json                         # verify
+npx --yes @jam-mcp/bootstrap@1.3.1 setup plan --json                     # what would change; changes nothing
+npx --yes @jam-mcp/bootstrap@1.3.1 setup apply --non-interactive --json  # execute it
+npx --yes @jam-mcp/bootstrap@1.3.1 doctor --json                         # verify
 ```
 
 Each returns a single JSON document on stdout with a stable status code. Branch
@@ -237,15 +248,36 @@ Do **not**:
 - guess a Jira project key from a repo or directory name
 - overwrite or remove unrelated `.mcp.json` entries
 - assemble `project.yaml` or `.mcp.json` yourself
+- treat an existing Atlassian or Jira MCP server as a conflict, or ask whether
+  to replace it — setup preserves every unrelated `.mcp.json` entry, the two
+  coexist, and removing one is the user's decision to raise, never a setup
+  precondition
+- call it done because something can already read Jira — JAM is READY when
+  `doctor --json` reports `ready`, and nothing short of that
+- create a Jira issue, branch, or PR for the setup itself
 
-Stop only where a person is genuinely required — `JAM_PROJECT_SELECTION_REQUIRED`
-(ask which Jira project) and `JAM_AUTH_REQUIRED` (ask them to authenticate).
-Finish with `npx --yes @jam-mcp/bootstrap@1.3.0 doctor --json`.
+### Where to stop, and where not to
+
+Three kinds of outcome, and only the first is a question for a person:
+
+- **Human boundary — stop and hand it over.**
+  `JAM_PROJECT_SELECTION_REQUIRED`: show `projects[]` and ask which Jira
+  project. `JAM_AUTH_REQUIRED`: relay `nextAction.userCommand` and the
+  variables in `nextAction.env`. Never run the login yourself, never accept a
+  token, never store one.
+- **Self-heal — no question belongs here.** `JAM_RUNTIME_CONFIG_MISSING`
+  carries a runnable `nextAction.command`. Run it, then re-run setup.
+- **Hard fault — report, do not retry.** `JAM_PROJECT_CONFIG_INVALID`,
+  `JAM_MCP_CONFIG_UNREADABLE`, `JAM_BINDINGS_UNREADABLE`,
+  `JAM_MIGRATION_TARGET_UNAVAILABLE`, and a `verification_failed` status all
+  describe a state a rerun will not change. Say what it says.
+
+Finish with `npx --yes @jam-mcp/bootstrap@1.3.1 doctor --json`.
 
 ## Commands
 
 These read as `jam …` throughout — the short form from the optional global
-install above. Everything works the same as `npx --yes @jam-mcp/launcher@1.3.0
+install above. Everything works the same as `npx --yes @jam-mcp/launcher@1.3.1
 …` if you skipped it.
 
 ```text
@@ -313,7 +345,7 @@ and is safe to commit:
 ```json
 {
   "mcpServers": {
-    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.3.0", "serve"] }
+    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.3.1", "serve"] }
   }
 }
 ```
@@ -402,6 +434,11 @@ and for the three changes it can make safely.
 whitelist is the point of the tool.
 
 ## Development
+
+This section is for working on JAM itself. To *use* JAM in a project, see
+[Setup with a coding agent](#setup-with-a-coding-agent) or [Setup](#setup)
+above — neither installs from a checkout, and building this repository is not
+a way to install anything.
 
 An npm workspaces monorepo:
 

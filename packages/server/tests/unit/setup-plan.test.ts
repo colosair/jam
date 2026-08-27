@@ -322,7 +322,11 @@ describe("computeSetupPlan", () => {
     expect(plan.code).toBe("JAM_AUTH_REQUIRED");
     expect(plan.requiresUserAction).toBe(true);
     expect(plan.changes.length).toBeGreaterThan(0);
-    expect(plan.nextAction).toEqual({ type: "authenticate" });
+    expect(plan.nextAction).toEqual({
+      type: "authenticate",
+      userCommand: `npx --yes @jam-mcp/bootstrap@${SERVER_VERSION} auth login`,
+      env: ["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"],
+    });
   });
 
   it("refuses a migration when the target cannot be found, and keeps the rest of the plan", () => {
@@ -613,14 +617,21 @@ describe("nextAction is executable on a machine with nothing installed", () => {
     );
   });
 
-  it("offers no command at all for the one step a person must take themselves", () => {
+  it("offers no runnable command at all for the one step a person must take themselves", () => {
     const plan = computeSetupPlan(detect(bareProject(), homeWithRuntime(), missingCredentials), {
       explicitKey: "PROJECT",
     });
 
-    // `jam auth login` is interactive by design; handing an agent a command
-    // here would invite it to run one on someone's behalf.
-    expect(plan.nextAction).toEqual({ type: "authenticate" });
+    // `jam auth login` is interactive by design; handing an agent a `command`
+    // here would invite it to run one on someone's behalf. What it gets is a
+    // `userCommand` to relay, and the variable names that would do instead -
+    // enough to ask the person for the right thing, never enough to act.
+    expect(plan.nextAction?.type).toBe("authenticate");
+    expect(plan.nextAction?.command).toBeUndefined();
+    expect(plan.nextAction?.userCommand).toBe(
+      `npx --yes @jam-mcp/bootstrap@${SERVER_VERSION} auth login`,
+    );
+    expect(plan.nextAction?.env).toEqual(["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"]);
   });
 
   it("emits no bare `jam` command from any plan", () => {
@@ -635,10 +646,14 @@ describe("nextAction is executable on a machine with nothing installed", () => {
     ];
 
     for (const plan of plans) {
-      const command = plan.nextAction?.command;
-      if (command === undefined) continue;
-      expect(command.startsWith("jam ")).toBe(false);
-      expect(command).toMatch(/^npx --yes @jam-mcp\/\S+@\d+\.\d+\.\d+ /);
+      // Both fields end up in front of a machine with no PATH to rely on: one
+      // is run, the other is shown and then typed. A bare `jam` fails either
+      // way.
+      for (const command of [plan.nextAction?.command, plan.nextAction?.userCommand]) {
+        if (command === undefined) continue;
+        expect(command.startsWith("jam ")).toBe(false);
+        expect(command).toMatch(/^npx --yes @jam-mcp\/\S+@\d+\.\d+\.\d+ /);
+      }
     }
   });
 });

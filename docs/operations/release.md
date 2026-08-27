@@ -75,8 +75,37 @@ registry source from running elsewhere.
    - a write against a dedicated test issue plans, applies, verifies by direct
      read, and is restored the same way
    - a key outside the configured project is refused at plan time
-6. **Tag** the release commit and push the tag.
-7. **GitHub Release** against that tag.
+6. **Two-URL zero-base acceptance** — the agent-installability claim, which no
+   automated gate can make. The smoke gate proves the machinery works; this
+   proves an agent that has never seen JAM finds and follows it.
+
+   Open a fresh coding-agent session in a project unrelated to JAM, on a
+   machine in the zero state above (say which of the four it establishes), and
+   give it exactly three inputs and nothing else:
+
+   ```text
+   https://github.com/colosair/asc
+   https://github.com/colosair/jam
+   적용해
+   ```
+
+   **PASS:** it reaches `doctor --json` `ready` against a real site and makes a
+   real Jira read, having stopped only at human boundaries —
+   `JAM_PROJECT_SELECTION_REQUIRED` and `JAM_AUTH_REQUIRED`.
+
+   **FAIL**, and record which:
+   - asked whether to replace or coexist with an existing Atlassian MCP
+   - asked whether setup needs a Jira issue, branch, or PR
+   - installed from a clone (`npm ci`, a build, `npm link`) instead of the
+     registry
+   - asked about `JAM_RUNTIME_CONFIG_MISSING` instead of running the command it
+     carries
+   - asked any other question the documented rules already answer
+
+   Every one of those is a documentation failure, not an agent failure: the
+   rule is missing, or it is somewhere the agent did not read. Fix it there.
+7. **Tag** the release commit and push the tag.
+8. **GitHub Release** against that tag.
 
 Publishing stays a human step. CI is automatic; `npm publish` is not. An npm
 version cannot be taken back, the release cadence is low, and the manual cost is

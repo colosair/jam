@@ -68,8 +68,22 @@ export type SetupPlan = {
    * configured - so it is an `npx` bootstrap invocation, never a bare `jam`.
    * A human interface is free to render the short form; this field is the one
    * a script runs, and a script has no PATH to rely on.
+   *
+   * `userCommand` is the opposite: a command for the person, which the agent
+   * relays and never runs. Authentication is the only step of that shape, and
+   * it carries no `command` precisely so that no caller can execute it. The
+   * separation is the point - one field is for running, the other for showing.
+   *
+   * `env` names the variables that would satisfy the same requirement without
+   * the interactive command, so an agent that cannot show a prompt still knows
+   * what the person has to provide - never their values.
    */
-  nextAction?: { type: "authenticate" | "select_project" | "configure_runtime"; command?: string };
+  nextAction?: {
+    type: "authenticate" | "select_project" | "configure_runtime";
+    command?: string;
+    userCommand?: string;
+    env?: string[];
+  };
   project?: { root: string; key?: string };
 };
 
@@ -217,7 +231,16 @@ function finish(
       code: "JAM_AUTH_REQUIRED",
       changes,
       requiresUserAction: true,
-      nextAction: { type: "authenticate" },
+      nextAction: {
+        type: "authenticate",
+        // Deliberately no `command`: an agent must not run the login, and the
+        // absence is what stops it. `userCommand` is what it hands the person
+        // instead - previously that instruction existed only in CLI prose, so
+        // an agent reading the JSON alone knew a human was needed but not for
+        // what.
+        userCommand: portableBootstrapCommand("auth login"),
+        env: ["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"],
+      },
       project,
     };
   }

@@ -31,9 +31,13 @@ refuses to report success unless the intended result is actually there. An
 ambiguous failure is reported as uncertain rather than retried — retrying a
 write that may have landed is how one comment becomes two.
 
-Three operations: `comment.add` (plain text, converted to ADF here),
-`field.update` (summary, priority, labels, components), and `status.transition`
-(matched against the transitions Jira currently offers, never a guessed id).
+Five operations: `comment.add` (plain text, converted to ADF here),
+`field.update` (summary, priority, labels, components), `status.transition`
+(matched against the transitions Jira currently offers, never a guessed id),
+`assignee.update` (resolved to an account by exact display name or accountId,
+never a substring match), and `issue.create` (planned against the project's own
+create schema, so an unavailable issue type is a refusal here rather than a
+Jira 400 later).
 
 ## Evidence boundary
 
@@ -70,10 +74,10 @@ auth login   Store Jira credentials in this user's OS secret store
 runtime      Show or change which JAM build this machine runs
 ```
 
-Written out, that is `npx --yes @jam-mcp/launcher@1.3.0 doctor`, or just `jam
+Written out, that is `npx --yes @jam-mcp/launcher@1.3.1 doctor`, or just `jam
 doctor` if you took the launcher's optional global install. Starting from
 nothing — no install, no runtime chosen yet — use
-`npx --yes @jam-mcp/bootstrap@1.3.0 init` instead.
+`npx --yes @jam-mcp/bootstrap@1.3.1 init` instead.
 
 Credentials come from the process environment or this user's OS secret store —
 never from a repository file — and never appear in logs, telemetry, or tool
