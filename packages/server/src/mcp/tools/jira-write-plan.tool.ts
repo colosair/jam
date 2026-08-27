@@ -46,8 +46,14 @@ export function registerJiraWritePlan(server: McpServer, deps: JamDeps): void {
         operation: z
           .enum(WRITE_OPERATIONS)
           .describe(`What to do: ${WRITE_OPERATIONS.join(", ")}.`),
+        // Loose, not stripping. A strict object would refuse an unknown field
+        // with a schema error, and the default stripping one would silently
+        // drop it - which is worse: an agent that asked to set an assignee
+        // would get an issue without one and a receipt that never mentions it.
+        // Letting unknown keys through means JAM refuses them itself, by name,
+        // with the supported list attached.
         input: z
-          .object({
+          .looseObject({
             text: z.string().min(1).optional().describe("comment.add: the comment, as plain text."),
             status: z
               .string()
