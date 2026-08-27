@@ -1,7 +1,10 @@
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { createServer } from "../../src/mcp/create-server.js";
 import { runHealthGate } from "../../src/bootstrap/boot-health-gate.js";
 import { serve } from "../../src/cli/serve.js";
 import { doctor } from "../../src/cli/doctor.js";
@@ -39,6 +42,26 @@ describe("runHealthGate", () => {
     const key = result.checks.find((c) => c.name === "Jira project key");
     expect(key).toMatchObject({ ok: false, fatal: true });
     expect(jira.searchCalls).toHaveLength(0);
+  });
+
+  it("reports the tool count the MCP server actually serves", async () => {
+    // The count used to be a literal in the detail string, and went stale the
+    // moment the write pair was added. Compare it against the server's own tool
+    // list rather than against the constant that produced it.
+    const deps = testDeps(new FakeJira({}), testConfig({ project: { key: "PROJECT" } }));
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "health-gate-test", version: "0" });
+    await Promise.all([
+      createServer(deps).connect(serverTransport),
+      client.connect(clientTransport),
+    ]);
+    const { tools } = await client.listTools();
+
+    const result = await runHealthGate(deps, "boot");
+    const startup = result.checks.find((c) => c.name === "MCP server startup");
+
+    expect(startup).toMatchObject({ ok: true, detail: `${tools.length} tools registered` });
   });
 
   it("full mode adds live Jira checks once boot-level checks pass", async () => {

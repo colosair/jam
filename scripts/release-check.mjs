@@ -110,6 +110,23 @@ for (const path of tracked) {
   }
 }
 
+// 6. The smoke gate packs what it tests.
+//
+// `tarball-smoke.mjs` installs whatever tarball it finds under private/packs.
+// Left to itself it will happily certify an artefact from a previous release -
+// which is exactly what happened on Windows, where 1.0.0 tarballs made five
+// server checks fail against a healthy 1.1.0 tree. So `npm run smoke` has to
+// repack first, and `smoke:packed` stays available for re-running the same
+// artefacts deliberately.
+const rootScripts = JSON.parse(read("package.json")).scripts ?? {};
+const smoke = rootScripts.smoke ?? "";
+if (!/\bpack:all\b/.test(smoke) || !/\bsmoke:packed\b/.test(smoke)) {
+  fail("package.json", '"smoke" must run pack:all before smoke:packed, or it tests stale tarballs');
+}
+if (!/tarball-smoke\.mjs/.test(rootScripts["smoke:packed"] ?? "")) {
+  fail("package.json", '"smoke:packed" must run scripts/tarball-smoke.mjs');
+}
+
 if (problems.length === 0) {
   process.stdout.write(`Release ${version} is consistent across manifests, code and docs.\n`);
   process.exit(0);

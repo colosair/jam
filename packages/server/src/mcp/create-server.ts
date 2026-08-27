@@ -13,6 +13,21 @@ const pkg = require("../../package.json") as { version?: string };
 export const SERVER_NAME = "jam";
 
 /**
+ * Every tool registration, in one list. `TOOL_COUNT` is derived from it, so a
+ * tool added here is counted everywhere it is reported - doctor included -
+ * without anyone having to remember a second place to edit.
+ */
+const REGISTER_TOOLS = [
+  registerJiraSearch,
+  registerJiraContext,
+  registerJiraFull,
+  registerJiraWritePlan,
+  registerJiraWriteApply,
+];
+
+export const TOOL_COUNT = REGISTER_TOOLS.length;
+
+/**
  * The external contract: three read tools and two write tools.
  *
  * The read three have been stable since the first release and do not change.
@@ -45,11 +60,7 @@ export function createServer(deps: JamDeps): McpServer {
     },
   );
 
-  registerJiraSearch(server, deps);
-  registerJiraContext(server, deps);
-  registerJiraFull(server, deps);
-  registerJiraWritePlan(server, deps);
-  registerJiraWriteApply(server, deps);
+  for (const register of REGISTER_TOOLS) register(server, deps);
 
   return server;
 }

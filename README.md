@@ -252,7 +252,7 @@ problem, or a local setup problem?
 [OK]   Jira project key - PROJECT
 [OK]   Credentials present - you@example.com @ https://your-site.atlassian.net (user-env)
 [OK]   Jira base URL - https://your-site.atlassian.net
-[OK]   MCP server startup - 3 tools registered
+[OK]   MCP server startup - 5 tools registered
 [OK]   Jira authentication - Your Name
 [OK]   JQL search / PROJECT access - reachable (sample PROJECT-101)
 [OK]   Issue detail endpoint - reachable (PROJECT-101)

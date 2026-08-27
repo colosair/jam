@@ -1,6 +1,6 @@
 import type { JamDeps } from "../deps.js";
 import { toJamError } from "../domain/errors.js";
-import { createServer } from "../mcp/create-server.js";
+import { createServer, TOOL_COUNT } from "../mcp/create-server.js";
 
 export type HealthCheck = {
   name: string;
@@ -84,7 +84,7 @@ export async function runHealthGate(deps: JamDeps, mode: GateMode): Promise<Gate
 
   try {
     createServer(deps);
-    add({ name: "MCP server startup", ok: true, fatal: true, detail: "3 tools registered" });
+    add({ name: "MCP server startup", ok: true, fatal: true, detail: `${TOOL_COUNT} tools registered` });
   } catch (err) {
     add({ name: "MCP server startup", ok: false, fatal: true, detail: toJamError(err).message });
   }

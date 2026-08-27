@@ -82,7 +82,7 @@ Then, per stage:
 ◆ Verify
 ✓ Node runtime           v20.11.0
 ✓ Jira authentication    Your Name
-✓ MCP server             3 tools registered
+✓ MCP server             5 tools registered
 
 ✓ JAM ready
 

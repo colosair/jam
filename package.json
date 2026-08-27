@@ -14,7 +14,8 @@
     "build": "npm run build -w @jam-mcp/launcher && npm run build -w @jam-mcp/server && npm run build -w @jam-mcp/bootstrap",
     "test": "npm run test --workspaces --if-present",
     "pack:all": "node scripts/pack-all.mjs",
-    "smoke": "node scripts/tarball-smoke.mjs",
+    "smoke": "npm run pack:all && npm run smoke:packed",
+    "smoke:packed": "node scripts/tarball-smoke.mjs",
     "release:check": "node scripts/release-check.mjs",
     "doctor": "node packages/server/dist/index.js doctor",
     "serve": "node packages/server/dist/index.js serve"
