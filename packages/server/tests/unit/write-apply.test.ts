@@ -8,6 +8,8 @@ import { JamError } from "../../src/domain/errors.js";
 import type {
   GetCommentsRequest,
   GetCommentsResult,
+  GetIssueRequest,
+  GetIssueResult,
   GetIssuesRequest,
   GetIssuesResult,
   JiraReadPort,
@@ -33,22 +35,24 @@ import { FakeJiraWrite, issue, testConfig, testDeps } from "../helpers.js";
  * express either failure this suite is about.
  */
 class MutableJira implements JiraReadPort {
-  readonly reads: GetIssuesRequest[] = [];
+  readonly reads: GetIssueRequest[] = [];
   constructor(private current: FullIssueContext) {}
 
   set(next: Partial<FullIssueContext>): void {
     this.current = { ...this.current, ...next };
   }
 
-  async getIssues(req: GetIssuesRequest): Promise<GetIssuesResult> {
+  async getIssue(req: GetIssueRequest): Promise<GetIssueResult> {
     this.reads.push(req);
     const snapshot = { ...this.current, comments: [...this.current.comments] };
-    return {
-      issues: [snapshot],
-      missingKeys: [],
-      commentTotals: { [snapshot.key]: snapshot.comments.length },
-      responseBytes: 100,
-    };
+    return { issue: snapshot, responseBytes: 100 };
+  }
+
+  async getIssues(_req: GetIssuesRequest): Promise<GetIssuesResult> {
+    // ConsistencyPolicy calls for a direct issue GET around a write, and the
+    // bulk endpoint is not one. Reaching it here would mean the write plane
+    // had quietly gone back to it.
+    throw new Error("apply must confirm a write with a direct issue GET, not bulkfetch");
   }
 
   async searchPage(_req: SearchPageRequest): Promise<SearchPageResult> {

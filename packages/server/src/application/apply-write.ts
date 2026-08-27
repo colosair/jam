@@ -129,10 +129,14 @@ async function verify(deps: JamDeps, plan: ExistingIssueWritePlan): Promise<Reco
   const issue = await readIssue(deps, plan.issueKey);
 
   if (plan.mutation.kind === "comment") {
-    const { comments } = await deps.jira.getIssues({
-      keys: [plan.issueKey],
+    // Direct issue GET again, not the bulk endpoint: this is post-write
+    // confirmation, and ConsistencyPolicy makes no exception for the read that
+    // happens to want the comment field.
+    const { issue: withComments } = await deps.jira.getIssue({
+      key: plan.issueKey,
       fields: ["summary", "status", "comment", "updated"],
-    }).then((r) => ({ comments: r.issues[0]?.comments ?? [] }));
+    });
+    const comments = withComments?.comments ?? [];
 
     const wanted = plan.mutation.text.trim();
     const found = comments.some((c) => c.body.trim() === wanted);

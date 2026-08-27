@@ -107,12 +107,18 @@ export async function planWrite(
 /**
  * The issue as Jira has it, read directly by key.
  *
- * A direct read, never a search: ConsistencyPolicy requires it for anything
- * that decides a write, and a JQL result can lag behind the issue it describes.
+ * `getIssue`, not `getIssues`: ConsistencyPolicy requires a direct issue GET
+ * for anything that decides or confirms a write, and the bulk endpoint is not
+ * one. A JQL result can lag behind the issue it describes; a bulk fetch is
+ * free to answer from a different path than the single-issue endpoint. Neither
+ * difference matters for ordinary reads, and both matter here.
+ *
+ * The one read every write goes through - the pre-write conflict check, the
+ * post-write confirmation, and the post-create confirmation.
  */
 export async function readIssue(deps: JamDeps, issueKey: string): Promise<FullIssueContext> {
-  const { issues } = await deps.jira.getIssues({
-    keys: [issueKey],
+  const { issue: found } = await deps.jira.getIssue({
+    key: issueKey,
     // `issuetype` and `description` are here for creation's verification step,
     // which has to confirm the issue Jira made is the one that was asked for.
     // A field a plan promises to check has to be a field this read returns -
@@ -130,15 +136,14 @@ export async function readIssue(deps: JamDeps, issueKey: string): Promise<FullIs
     ],
   });
 
-  const issue = issues[0];
-  if (!issue) {
+  if (!found) {
     throw new JamError(
       "ISSUE_NOT_FOUND",
       `Jira has no issue ${issueKey}, or it is not visible to this account.`,
       { issueKey },
     );
   }
-  return issue;
+  return found;
 }
 
 /**

@@ -55,8 +55,16 @@ export function canonicalizePlainText(text: string): string {
  * wrote, and ADF round-trips it - so only the edges of each block are trimmed.
  */
 function toParagraphs(text: string): string[] {
-  return text
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter(Boolean);
+  return (
+    text
+      // Line endings first. A CRLF document would otherwise carry a stray \r
+      // at the end of every block into ADF, and Jira renders it back as LF -
+      // so a create that was correct would fail verification, on nothing more
+      // than which editor the caller used. Worse, `\r\n\r\n` and `\n\n` would
+      // split into paragraphs differently.
+      .replace(/\r\n?/g, "\n")
+      .split(/\n{2,}/)
+      .map((block) => block.trim())
+      .filter(Boolean)
+  );
 }

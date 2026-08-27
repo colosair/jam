@@ -4,6 +4,8 @@ import type {
   CurrentUser,
   GetCommentsRequest,
   GetCommentsResult,
+  GetIssueRequest,
+  GetIssueResult,
   GetIssuesRequest,
   GetIssuesResult,
   JiraReadPort,
@@ -48,6 +50,24 @@ export class JiraCloudReadAdapter implements JiraReadPort {
     };
     if (data.nextPageToken) result.nextPageToken = data.nextPageToken;
     return result;
+  }
+
+  /**
+   * `GET /rest/api/3/issue/{key}` - the single-issue endpoint, not bulkfetch.
+   *
+   * This is what ConsistencyPolicy means by a direct issue read, and the write
+   * plane is the only caller. A 404 is an answer, not a failure: the issue is
+   * not there, or not visible to this account, and the caller decides which of
+   * those matters.
+   */
+  async getIssue(req: GetIssueRequest): Promise<GetIssueResult> {
+    const { data, bytes } = await this.client.request<RawIssue>({
+      path: `rest/api/3/issue/${encodeURIComponent(req.key)}`,
+      query: { fields: req.fields.join(",") },
+    });
+
+    if (!data?.key) return { responseBytes: bytes };
+    return { issue: mapIssueWithMeta(data, this.config).issue, responseBytes: bytes };
   }
 
   async getIssues(req: GetIssuesRequest): Promise<GetIssuesResult> {

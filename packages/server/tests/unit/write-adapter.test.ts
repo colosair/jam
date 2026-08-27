@@ -276,3 +276,31 @@ describe("canonicalizePlainText", () => {
     expect(canonicalizePlainText("a\nb")).toBe("a\nb");
   });
 });
+
+describe("canonicalizePlainText line endings", () => {
+  it("reads a CRLF document the same way it reads an LF one", async () => {
+    // Otherwise a stray carriage return rides into ADF at the end of every
+    // block, Jira renders it back as LF, and a correct create fails
+    // verification on nothing but which editor the caller used.
+    const { canonicalizePlainText } = await import("../../src/domain/adf.js");
+
+    const lf = "One.\n\nTwo.";
+    const crlf = "One.\r\n\r\nTwo.";
+
+    expect(canonicalizePlainText(crlf)).toBe(canonicalizePlainText(lf));
+    expect(canonicalizePlainText(crlf)).toBe("One.\n\nTwo.");
+  });
+
+  it("splits CRLF blank lines into the same paragraphs LF gives", async () => {
+    const crlf = "One.\r\n\r\nTwo.";
+    const doc = textToAdf(crlf) as { content: { content: { text: string }[] }[] };
+
+    expect(doc.content.map((p) => p.content[0]!.text)).toEqual(["One.", "Two."]);
+  });
+
+  it("keeps a lone CR as a line break, not as a stray character", async () => {
+    const { canonicalizePlainText } = await import("../../src/domain/adf.js");
+
+    expect(canonicalizePlainText("a\rb")).toBe("a\nb");
+  });
+});
