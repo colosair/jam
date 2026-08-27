@@ -194,7 +194,7 @@ probe blocks the process, so a spinner would print one frame and then freeze —
 it gets a pending line instead, and only when a probe actually happens:
 
 ```text
-○ Checking @jam-mcp/launcher@1.3.1 on npm...
+○ Checking @jam-mcp/launcher@1.3.2 on npm...
 ```
 
 Disabled entirely when not interactive, where it degrades to a single pending
@@ -235,7 +235,7 @@ shell history:
 ```text
 × Migration target is not available from the configured npm registry
 
-  npm could not find @jam-mcp/launcher@1.3.1 in the configured registry.
+  npm could not find @jam-mcp/launcher@1.3.2 in the configured registry.
   Existing .mcp.json was left unchanged.
 ```
 
@@ -283,7 +283,7 @@ adoption is asked for.
   Recorded for you only - the repository was not touched.
 ✓ Registered with            claude-code
 ! codex was not reachable, so JAM was not registered with it.
-› If you use it, run: codex mcp add jam -- npx --yes @jam-mcp/launcher@1.3.1 serve
+› If you use it, run: codex mcp add jam -- npx --yes @jam-mcp/launcher@1.3.2 serve
 ```
 
 **A rebind names what it replaces.** `jam setup --project OTHER` on a workspace
@@ -347,12 +347,12 @@ method creates, so that one row stays a human check.
 For agents and scripts:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.3.1 setup plan --json
-npx --yes @jam-mcp/bootstrap@1.3.1 setup apply --non-interactive --json
-npx --yes @jam-mcp/bootstrap@1.3.1 setup --agent
-npx --yes @jam-mcp/bootstrap@1.3.1 doctor --json
-npx --yes @jam-mcp/bootstrap@1.3.1 runtime --json
-npx --yes @jam-mcp/bootstrap@1.3.1 auth status --json
+npx --yes @jam-mcp/bootstrap@1.3.2 setup plan --json
+npx --yes @jam-mcp/bootstrap@1.3.2 setup apply --non-interactive --json
+npx --yes @jam-mcp/bootstrap@1.3.2 setup --agent
+npx --yes @jam-mcp/bootstrap@1.3.2 doctor --json
+npx --yes @jam-mcp/bootstrap@1.3.2 runtime --json
+npx --yes @jam-mcp/bootstrap@1.3.2 auth status --json
 ```
 
 A locally installed `jam` runs each of these identically, and this document

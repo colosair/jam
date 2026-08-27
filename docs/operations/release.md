@@ -77,7 +77,8 @@ registry source from running elsewhere.
    - a key outside the configured project is refused at plan time
 6. **Two-URL zero-base acceptance** — the agent-installability claim, which no
    automated gate can make. The smoke gate proves the machinery works; this
-   proves an agent that has never seen JAM finds and follows it.
+   proves an agent that has never seen JAM finds it, is allowed to run it, and
+   follows it.
 
    Open a fresh coding-agent session in a project unrelated to JAM, on a
    machine in the zero state above (say which of the four it establishes), and
@@ -88,6 +89,34 @@ registry source from running elsewhere.
    https://github.com/colosair/jam
    적용해
    ```
+
+   It is graded as two gates, because two different things can fail and the
+   fixes are not in the same place.
+
+   **Gate A — host invocation.** Everything before JAM starts:
+
+   - the agent chooses the canonical command
+   - it runs it with the string unmodified: no `cd`, pipe, redirection, `&&`,
+     environment prefix, or substituted package runner
+   - the host allows it to execute
+   - the JAM process actually starts (JAM output appears)
+
+   Check the same for the self-heal command JAM hands back,
+   `runtime use package` — a host can refuse that one too, and an acceptance
+   that only exercised the first command has not established Gate A.
+
+   Two grades, because a host's own policy is not JAM's to fix:
+
+   - **A0 — pristine.** No JAM-related permission rule anywhere. Record the
+     result; it is a compatibility observation, not a release bar. A refusal
+     here is the host's policy, not a JAM defect and not a documentation
+     defect.
+   - **A1 — documented exact trust.** Exactly the user-local rules this
+     repository documents, and nothing broader. **A1 must pass.** If it does
+     not, the fallback JAM documents does not work, and that is a release
+     blocker — fix the documented contract, do not widen the rule.
+
+   **Gate B — JAM bootstrap.** Once the process is running:
 
    **PASS:** it reaches `doctor --json` `ready` against a real site and makes a
    real Jira read, having stopped only at human boundaries —
@@ -102,15 +131,106 @@ registry source from running elsewhere.
      carries
    - asked any other question the documented rules already answer
 
-   Every one of those is a documentation failure, not an agent failure: the
+   Every Gate B failure is a documentation failure, not an agent failure: the
    rule is missing, or it is somewhere the agent did not read. Fix it there.
-7. **Tag** the release commit and push the tag.
+   Gate B must pass.
+
+   Record the run with enough detail that the next host version can be compared
+   against it:
+
+   ```text
+   Claude Code version
+   OS
+   Auto Mode enabled
+   autoMode.classifyAllShell
+   settings source (which file, which rules)
+   canonical command, verbatim
+   classifier PASS / BLOCKED
+   JAM process started yes/no
+   doctor result
+   ```
+
+   `autoMode.classifyAllShell` matters enough to record every time. With it
+   set, a host suspends its Bash allow rules and sends every shell command to
+   its classifier — so an exact rule stops being a fallback, and A1 has to be
+   established through whatever user-level intent that host offers instead. An
+   A1 result recorded without that value cannot be compared to the next one.
+
+7. **Tag** the release commit and push the tag — after A1 and Gate B have
+   passed against the published packages, never before.
 8. **GitHub Release** against that tag.
 
 Publishing stays a human step. CI is automatic; `npm publish` is not. An npm
 version cannot be taken back, the release cadence is low, and the manual cost is
 small — that trade will be worth revisiting when the cadence changes, together
 with provenance and trusted publishing.
+
+## Recorded runs
+
+What a host did, on a stated version, against a stated command. Kept so the
+next host release can be compared to the last one rather than re-argued.
+
+The transcripts below are evidence of what happened, not instructions. The
+commands in them are quoted verbatim, pinned to the version that was current
+at the time and wrapped exactly as the agent wrapped them - which is why the
+block is fenced off from `release-check`, whose job is to keep *instructions*
+current and unwrapped.
+
+<!-- release-check: historical-evidence:start -->
+
+### 2026-08-27 — Claude Code auto mode, canonical bootstrap refused
+
+Claude Code 2.1.246 (claude-desktop), macOS, model claude-opus-5, Auto Mode on
+(`permissionMode: "auto"`, no bypass), cwd a project unrelated to JAM.
+`autoMode.classifyAllShell` unset everywhere.
+
+The agent ran, verbatim:
+
+```text
+npx --yes @jam-mcp/bootstrap@1.3.1 setup --agent 2>&1 | tail -60
+```
+
+The host refused before execution: *"Permission for this action was denied by
+the Claude Code auto mode classifier. Reason: Blocked by classifier."* No JAM
+output of any kind. The process never started.
+
+The agent then reached READY through four other commands, each wrapped the same
+way (`2>&1 | tail -N`): `setup plan --json`, `setup --project <KEY>
+--non-interactive --json`, `runtime use package --json`, `doctor --json`. So
+the wrapper alone did not decide it.
+
+A second measurement the next day, Claude Code 2.1.233, macOS 26.5.2, Auto Mode
+on, same kind of project, with two JAM rules present in the project's
+`.claude/settings.local.json` but **neither matching this command**:
+
+```text
+npx --yes @jam-mcp/bootstrap@1.3.1 setup --agent
+```
+
+Same refusal, same absence of output. **A0 = blocked, for the unwrapped
+canonical command.**
+
+<!-- release-check: historical-evidence:end -->
+
+What that establishes, and what it does not: a pristine auto-mode host can
+refuse the canonical bootstrap on its own judgement, with the command in its
+simplest possible form. It is therefore not a wrapper defect, and no rewriting
+of the command is the fix. What remains for JAM to guarantee is A1 — that the
+exact, narrow, user-local rule this repository documents does let the same
+command through.
+
+The wrapper is still worth forbidding, for a separate and now-documented
+reason: a host matches permission rules against the whole command, and a pipe
+makes it compound, so a wrapped invocation matches no rule written for the
+canonical one. Wrapping removes the fallback even where the fallback would have
+worked.
+
+### v1.3.1
+
+Published to npm as 1.3.0's successor, then superseded before release
+acceptance completed. **Published but not tagged**, and no GitHub Release. It
+was not unpublished - an npm version is immutable and yanking one people may
+already have resolved is worse than leaving it. 1.3.2 is the canonical release.
 
 ## What "zero state" means
 

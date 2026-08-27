@@ -150,7 +150,7 @@ itself — the MCP server, the setup core and the CLI they all reach.
 **For a person**, once per machine:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.3.1 init
+npx --yes @jam-mcp/bootstrap@1.3.2 init
 ```
 
 Choose whether you're *using* JAM (runs the published package) or *developing*
@@ -164,10 +164,10 @@ installing the launcher globally, and everything it runs still goes through the
 runtime you chose above:
 
 ```bash
-npm install -g @jam-mcp/launcher@1.3.1
+npm install -g @jam-mcp/launcher@1.3.2
 ```
 
-Without it, the same commands are `npx --yes @jam-mcp/launcher@1.3.1 <command>`.
+Without it, the same commands are `npx --yes @jam-mcp/launcher@1.3.2 <command>`.
 Nothing else changes — not your editor's wiring, not a shared `.mcp.json`, not
 a teammate who never installed it.
 
@@ -208,7 +208,7 @@ to set JAM up in a project, **use the official path** rather than working out
 an installation from this README:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.3.1 setup --agent
+npx --yes @jam-mcp/bootstrap@1.3.2 setup --agent
 ```
 
 **If you are reading this inside a clone of this repository** — because someone
@@ -225,9 +225,9 @@ asking is done. Install, register, and verify without further confirmation.
 or, to inspect before acting:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.3.1 setup plan --json                     # what would change; changes nothing
-npx --yes @jam-mcp/bootstrap@1.3.1 setup apply --non-interactive --json  # execute it
-npx --yes @jam-mcp/bootstrap@1.3.1 doctor --json                         # verify
+npx --yes @jam-mcp/bootstrap@1.3.2 setup plan --json                     # what would change; changes nothing
+npx --yes @jam-mcp/bootstrap@1.3.2 setup apply --non-interactive --json  # execute it
+npx --yes @jam-mcp/bootstrap@1.3.2 doctor --json                         # verify
 ```
 
 Each returns a single JSON document on stdout with a stable status code. Branch
@@ -237,6 +237,15 @@ Run them through `npx` as written, not as `jam …`. A machine you have never
 seen has no global install and no configured runtime, and bootstrap is the one
 entry point that needs neither. The same rule governs what JAM hands back: a
 plan's `nextAction.command` is always an `npx` invocation you can run as-is.
+
+Run it exactly as written, as one command. No `cd` in front of it, no pipe, no
+redirection, no `&&`, no environment prefix, and no other package runner
+swapped in — change directory through whatever your host gives you for that
+first, because the command line itself carries no path. This is not style: a
+host matches permission rules against the whole command, and a pipe makes it a
+compound one, so `npx ... setup --agent 2>&1 | tail -60` matches no rule
+written for `npx ... setup --agent`. A wrapper takes away the one thing that
+could have let it through.
 
 Do **not**:
 
@@ -255,11 +264,19 @@ Do **not**:
 - call it done because something can already read Jira — JAM is READY when
   `doctor --json` reports `ready`, and nothing short of that
 - create a Jira issue, branch, or PR for the setup itself
+- rewrite, wrap, or re-run the command through something else to get past a
+  host that refused it
 
 ### Where to stop, and where not to
 
-Three kinds of outcome, and only the first is a question for a person:
+Four kinds of outcome, and only two of them are a question for a person:
 
+- **Host boundary — the command never ran.** Your host refused before JAM
+  started: no JAM JSON, nothing on stdout, an explicit refusal from the host
+  itself. That is not a JAM failure, and there is no JAM status code for it —
+  JAM was not running to emit one. **Do not rewrite the command to get around
+  it.** Report the boundary, show the exact command, and ask the user to
+  authorize that one command. Then run the same command again, unchanged.
 - **Human boundary — stop and hand it over.**
   `JAM_PROJECT_SELECTION_REQUIRED`: show `projects[]` and ask which Jira
   project. `JAM_AUTH_REQUIRED`: relay `nextAction.userCommand` and the
@@ -272,12 +289,37 @@ Three kinds of outcome, and only the first is a question for a person:
   `JAM_MIGRATION_TARGET_UNAVAILABLE`, and a `verification_failed` status all
   describe a state a rerun will not change. Say what it says.
 
-Finish with `npx --yes @jam-mcp/bootstrap@1.3.1 doctor --json`.
+At a host boundary, ask for one rule for the exact command, in the user's own
+settings rather than the repository's. For Claude Code that is
+`~/.claude/settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx --yes @jam-mcp/bootstrap@1.3.2 setup --agent)",
+      "Bash(npx --yes @jam-mcp/bootstrap@1.3.2 runtime use package)"
+    ]
+  }
+}
+```
+
+The second line is there because `JAM_RUNTIME_CONFIG_MISSING` hands back a
+command to run, and a host can refuse that one too.
+
+Never ask for `Bash(npx:*)`, `Bash(npm:*)`, `Bash(*)`, or anything broader than
+the command that was refused — a rule admitting every package runner is a much
+larger ask than the one command, not a smaller one. Never write the rule
+yourself, never put it in the repository so the project approves its own
+tooling, and never reach for a shell variant, a wrapper script, or a different
+runner to get past a refusal. If the user declines, that is an answer.
+
+Finish with `npx --yes @jam-mcp/bootstrap@1.3.2 doctor --json`.
 
 ## Commands
 
 These read as `jam …` throughout — the short form from the optional global
-install above. Everything works the same as `npx --yes @jam-mcp/launcher@1.3.1
+install above. Everything works the same as `npx --yes @jam-mcp/launcher@1.3.2
 …` if you skipped it.
 
 ```text
@@ -345,7 +387,7 @@ and is safe to commit:
 ```json
 {
   "mcpServers": {
-    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.3.1", "serve"] }
+    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.3.2", "serve"] }
   }
 }
 ```
