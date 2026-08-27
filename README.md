@@ -2,6 +2,7 @@
 
 An agent-facing Jira access layer for Claude Code and Codex.
 
+[![CI](https://github.com/colosair/jam/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/colosair/jam/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@jam-mcp/bootstrap)](https://www.npmjs.com/package/@jam-mcp/bootstrap)
 [![node](https://img.shields.io/node/v/@jam-mcp/server)](https://nodejs.org)
 [![license](https://img.shields.io/npm/l/@jam-mcp/server)](LICENSE)
