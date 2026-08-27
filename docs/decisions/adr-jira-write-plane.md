@@ -70,6 +70,18 @@ document: an unrelated optional field appearing on a create screen invalidates
 nothing, and treating it as though it did would make every plan on an active
 project fail.
 
+**A receipt's promise is the check.** A create plan's `verification.expects`
+names what a direct read will have to show, and every field it names is
+compared - a field the receipt promises and the check skips reports
+`verified: true` about something nobody looked at. That includes the
+description, which needs canonical comparison rather than a raw one: the text
+becomes a document, Jira stores the document, and reading it back renders text
+again, so blank-line runs collapse and block edges lose whitespace. Both sides
+are normalized by the same function that builds the document
+(`canonicalizePlainText`), so formatting cannot fail a verification and
+different text cannot pass one. The project the issue landed in is checked too
+- the workspace binding is the whole of JAM's write scope.
+
 **A create is never retried.** This is the sharpest case of the rule the whole
 write plane follows. A repeated update converges; a repeated create leaves a
 second issue with a key nobody is holding. An ambiguous failure — a 5xx, a

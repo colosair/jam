@@ -14,7 +14,7 @@ import {
   resolveIssueType,
 } from "../policy/create-policy.js";
 import { PLAN_TTL_MS } from "../policy/write-policy.js";
-import { textToAdf } from "../domain/adf.js";
+import { canonicalizePlainText, textToAdf } from "../domain/adf.js";
 
 export type PlanCreateIssueRequest = { input: Record<string, unknown> };
 
@@ -80,7 +80,13 @@ export async function planCreateIssue(
   const intendedAfter: Record<string, unknown> = {
     issueType: issueType.name,
     summary: input.summary,
-    ...(input.description !== undefined ? { description: input.description } : {}),
+    // Canonical, not the raw string. `intendedAfter` is also what
+    // `verification.expects` promises a direct read will show, and a direct
+    // read shows the text as Jira renders it back - so promising the caller's
+    // exact bytes would be promising something no read can ever produce.
+    ...(input.description !== undefined
+      ? { description: canonicalizePlainText(input.description) }
+      : {}),
     ...(priority !== undefined ? { priority } : {}),
     ...(input.labels !== undefined ? { labels: input.labels } : {}),
     ...(components !== undefined ? { components } : {}),
@@ -166,6 +172,13 @@ export function validateCreateInput(raw: Record<string, unknown>): CreateIssueIn
     // prose - the same argument that keeps comment.add on plain text.
     if (typeof raw["description"] !== "string") {
       throw notAllowed("issue.create needs `input.description` to be plain text.");
+    }
+    // An all-whitespace description is not a description. Accepting one would
+    // mean promising to verify text that renders to nothing, which no read can
+    // confirm - so it is refused here rather than becoming an unverifiable
+    // create later.
+    if (canonicalizePlainText(raw["description"]).length === 0) {
+      throw notAllowed("issue.create needs `input.description` to be non-empty when it is set.");
     }
     input.description = raw["description"];
   }

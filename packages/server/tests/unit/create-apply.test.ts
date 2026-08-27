@@ -167,6 +167,122 @@ describe("applyWritePlan(issue.create)", () => {
     await expect(applyWritePlan(ctx.jam, { planId })).resolves.toMatchObject({ verified: true });
   });
 
+  it("verifies the description it promised to verify", async () => {
+    const description = "First paragraph.\n\nSecond paragraph.";
+    ctx = setup({
+      created: issue({
+        key: CREATED_KEY,
+        summary: "Write the thing",
+        issueType: "Task",
+        labels: ["jam"],
+        description,
+      }),
+    });
+    const { receipt } = await planWrite(ctx.jam, {
+      operation: "issue.create",
+      input: { ...INPUT, description },
+    });
+
+    // The receipt promised a direct read would show this. It has to be a
+    // promise the check actually keeps.
+    expect(receipt.verification.expects).toMatchObject({ description });
+
+    const applied = await applyWritePlan(ctx.jam, { planId: receipt.planId });
+    expect(applied.after).toMatchObject({ description });
+  });
+
+  it("fails verification when the description never arrived", async () => {
+    // The case the skip used to hide: Jira takes the create, drops the
+    // description, and the direct read shows none. Reporting verified: true
+    // here would be reporting that a field nobody looked at was correct.
+    ctx = setup({
+      created: issue({
+        key: CREATED_KEY,
+        summary: "Write the thing",
+        issueType: "Task",
+        labels: ["jam"],
+      }),
+    });
+    const { receipt } = await planWrite(ctx.jam, {
+      operation: "issue.create",
+      input: { ...INPUT, description: "This should have been stored." },
+    });
+
+    await expect(applyWritePlan(ctx.jam, { planId: receipt.planId })).rejects.toMatchObject({
+      code: "JAM_WRITE_VERIFICATION_FAILED",
+      details: { issueKey: CREATED_KEY, observed: { description: undefined } },
+    });
+  });
+
+  it("fails verification when the description arrived as something else", async () => {
+    ctx = setup({
+      created: issue({
+        key: CREATED_KEY,
+        summary: "Write the thing",
+        issueType: "Task",
+        labels: ["jam"],
+        description: "Something a rule rewrote.",
+      }),
+    });
+    const { receipt } = await planWrite(ctx.jam, {
+      operation: "issue.create",
+      input: { ...INPUT, description: "What was asked for." },
+    });
+
+    await expect(applyWritePlan(ctx.jam, { planId: receipt.planId })).rejects.toMatchObject({
+      code: "JAM_WRITE_VERIFICATION_FAILED",
+    });
+  });
+
+  it("does not fail on the formatting the round trip through ADF normalizes", async () => {
+    // Jira stores a document and renders it back as text. Blank-line runs
+    // collapse and block edges lose their whitespace, and none of that is a
+    // difference in what the description says - so a raw string comparison
+    // would fail every single create that had one.
+    ctx = setup({
+      created: issue({
+        key: CREATED_KEY,
+        summary: "Write the thing",
+        issueType: "Task",
+        labels: ["jam"],
+        description: "First paragraph.\n\nSecond paragraph.",
+      }),
+    });
+    const { receipt } = await planWrite(ctx.jam, {
+      operation: "issue.create",
+      input: { ...INPUT, description: "  First paragraph.\n\n\n\n   Second paragraph.   \n" },
+    });
+
+    await expect(applyWritePlan(ctx.jam, { planId: receipt.planId })).resolves.toMatchObject({
+      verified: true,
+    });
+  });
+
+  it("fails verification when the issue landed in another project", async () => {
+    // The workspace binding is the whole of JAM's write scope. A key from
+    // somewhere else coming back from a create is the one outcome that must
+    // never be reported as the create that was planned.
+    ctx = setup();
+    ctx.write.createdKey = "OTHER-123";
+    const planId = await plan(ctx);
+
+    await expect(applyWritePlan(ctx.jam, { planId })).rejects.toMatchObject({
+      code: "JAM_WRITE_VERIFICATION_FAILED",
+      details: {
+        issueKey: "OTHER-123",
+        expected: { project: "PROJECT" },
+        observed: { project: "OTHER" },
+      },
+    });
+  });
+
+  it("tells the caller not to create another one when verification fails", async () => {
+    ctx = setup({ created: issue({ key: CREATED_KEY, summary: "Wrong", issueType: "Task" }) });
+    const planId = await plan(ctx);
+
+    await expect(applyWritePlan(ctx.jam, { planId })).rejects.toThrow(/Do not create another one/);
+  });
+
   it("creates nothing when the plan has expired", async () => {
     let now = new Date();
     ctx = setup({ now: () => now });

@@ -237,6 +237,27 @@ describe("planWrite(issue.create)", () => {
     });
   });
 
+  it("promises the description a direct read can actually show", async () => {
+    // `intendedAfter` is what `verification.expects` promises. A direct read
+    // returns the text as Jira renders it back, so promising the caller's
+    // exact bytes would be promising something no read can produce - and the
+    // check would then have to be skipped, which is how this went wrong.
+    const { receipt } = await planWrite(ctx.jam, {
+      operation: "issue.create",
+      input: { ...VALID, description: "  One.\n\n\n\nTwo.   \n" },
+    });
+
+    expect(receipt.intendedAfter).toMatchObject({ description: "One.\n\nTwo." });
+    expect(receipt.verification.expects).toEqual(receipt.intendedAfter);
+  });
+
+  it("refuses a description that is only whitespace", async () => {
+    // It renders to nothing, so no direct read could ever confirm it.
+    await expect(
+      planWrite(ctx.jam, { operation: "issue.create", input: { ...VALID, description: "   \n  " } }),
+    ).rejects.toMatchObject({ code: "JAM_WRITE_OPERATION_NOT_ALLOWED" });
+  });
+
   it("refuses an existing-issue operation that arrived without a key", async () => {
     await expect(
       planWrite(ctx.jam, { operation: "comment.add", input: { text: "hi" } }),
