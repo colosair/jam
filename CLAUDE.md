@@ -43,9 +43,29 @@ Show the user what the plan says before applying it. The plan's `before` and
 `intendedAfter` are the whole point of the split: they are what makes the change
 reviewable while it is still cheap to abandon.
 
-Three operations, and nothing else is writable: `comment.add` (plain text),
-`field.update` (summary, priority, labels, components), `status.transition`.
-Writes are confined to the configured Jira project.
+Four operations, and nothing else is writable: `comment.add` (plain text),
+`field.update` (summary, priority, labels, components), `status.transition`,
+and `issue.create`. Writes are confined to the configured Jira project.
+
+`issue.create` has no `key` - there is no issue yet - and takes no project
+either: the new issue goes into the project this workspace is bound to. It
+accepts `issueType` and `summary` (both required), plus `description` (plain
+text), `priority`, `labels` and `components`. Nothing else: no assignee, no
+parent, no custom fields.
+
+Planning a create reads Jira's create schema for that project first, so these
+are JAM refusals rather than a Jira 400 arriving later:
+
+- `JAM_WRITE_ISSUE_TYPE_NOT_AVAILABLE` - that type is not one this account can
+  create here, or it is a subtask type, which needs a parent JAM does not set.
+  The available types come back with the error.
+- `JAM_WRITE_VALUE_NOT_ALLOWED` - the priority or component is not in the list
+  Jira offers for this project and issue type. The allowed values come back too.
+- `JAM_WRITE_REQUIRED_FIELD_UNSUPPORTED` - this project's create screen requires
+  something JAM cannot set. Tell the user to create the issue in Jira; there is
+  no input that gets past this.
+- `JAM_WRITE_SCHEMA_CHANGED` - between plan and apply the create schema moved in
+  a way that invalidates the plan. **Nothing was created.** Plan again.
 
 Handle these failures as follows, and do not collapse them into "it failed":
 
@@ -55,7 +75,9 @@ Handle these failures as follows, and do not collapse them into "it failed":
   not show it. Read the issue and tell the user what it actually says.
 - `JAM_WRITE_UNCERTAIN` - JAM does not know whether the write landed. **Read the
   issue. Never call `jira_write_apply` again** - the write may already have been
-  applied, and a second attempt is a second comment or a second transition.
+  applied, and a second attempt is a second comment, a second transition, or -
+  for `issue.create` - a second issue. After an uncertain create, look in the
+  project rather than planning another one.
 
 Only an `applied` receipt means it happened. An unverified or uncertain write is
 never reported to the user as done.

@@ -14,9 +14,23 @@
  * `complete: true` stand in for a verified mutation.
  */
 
-/** The operations the public MCP surface accepts. Nothing else is reachable. */
-export const WRITE_OPERATIONS = ["comment.add", "field.update", "status.transition"] as const;
+/**
+ * Operations that change an issue that already exists.
+ *
+ * Kept apart from creation because the two have different shapes at every
+ * layer: these name an issue, creation names a project; these compare a
+ * revision to detect a conflict, creation has no revision to compare.
+ */
+export const EXISTING_ISSUE_OPERATIONS = [
+  "comment.add",
+  "field.update",
+  "status.transition",
+] as const;
 
+/** The operations the public MCP surface accepts. Nothing else is reachable. */
+export const WRITE_OPERATIONS = [...EXISTING_ISSUE_OPERATIONS, "issue.create"] as const;
+
+export type ExistingIssueOperation = (typeof EXISTING_ISSUE_OPERATIONS)[number];
 export type WriteOperation = (typeof WRITE_OPERATIONS)[number];
 
 /**
@@ -43,7 +57,85 @@ export type FieldUpdateInput = {
 
 export type StatusTransitionInput = { status: string };
 
-export type WriteInput = CommentAddInput | FieldUpdateInput | StatusTransitionInput;
+/**
+ * Fields `issue.create` may set.
+ *
+ * The same argument as WRITABLE_FIELDS, and the same answer: a closed list, so
+ * "what can an agent create" has an answer that does not depend on one
+ * project's screen configuration. `issueType` and `summary` are required by
+ * every Jira project JAM can serve; the rest are optional and only sent when
+ * asked for.
+ */
+export const CREATABLE_FIELDS = [
+  "issueType",
+  "summary",
+  "description",
+  "priority",
+  "labels",
+  "components",
+] as const;
+
+export type CreatableField = (typeof CREATABLE_FIELDS)[number];
+
+export type CreateIssueInput = {
+  issueType: string;
+  summary: string;
+  description?: string;
+  priority?: string;
+  labels?: string[];
+  components?: string[];
+};
+
+export type WriteInput =
+  | CommentAddInput
+  | FieldUpdateInput
+  | StatusTransitionInput
+  | CreateIssueInput;
+
+/** An issue type as Jira offers it for one project, right now. */
+export type CreateIssueType = {
+  id: string;
+  name: string;
+  subtask: boolean;
+};
+
+/**
+ * One field on a project's create screen, as Jira describes it.
+ *
+ * `allowedValues` is present only for fields Jira constrains (priority,
+ * components, and issue-type-scoped pickers). Absent means unconstrained, not
+ * empty - the difference decides whether a value can be resolved or must be
+ * refused.
+ */
+export type CreateFieldMetadata = {
+  /** Jira's field id, e.g. `summary` or `customfield_12345`. */
+  id: string;
+  name: string;
+  required: boolean;
+  hasDefaultValue: boolean;
+  allowedValues?: { id?: string; name?: string }[];
+};
+
+/**
+ * What a create plan depends on, recorded so apply can check it again.
+ *
+ * Not a hash of the metadata document: an unrelated optional field appearing
+ * on the create screen does not invalidate a plan, and treating it as though
+ * it did would make every plan fail on a busy project. What is recorded here
+ * is the set of premises the plan was built on, and apply re-derives whether
+ * each still holds.
+ */
+export type CreateSchemaRequirements = {
+  issueTypeId: string;
+  issueTypeName: string;
+  /** Required field ids JAM undertook to supply or knew Jira would default. */
+  requiredFieldIds: string[];
+  /**
+   * Values resolved from Jira's allowed lists at plan time, by field id. Apply
+   * refuses if any of them is no longer offered.
+   */
+  resolvedValues: { fieldId: string; requested: string; resolved: string }[];
+};
 
 /** A transition as Jira currently offers it for one issue. */
 export type JiraTransition = {
@@ -53,49 +145,84 @@ export type JiraTransition = {
   to: string;
 };
 
+/** Fields every plan carries, whatever it is a plan for. */
+type WritePlanCommon = {
+  planId: string;
+  projectKey: string;
+  /** Only the fields this operation touches. */
+  before: Record<string, unknown>;
+  intendedAfter: Record<string, unknown>;
+  createdAt: string;
+  expiresAt: string;
+  /** Normalized payload the apply step will send. Never supplied by a caller. */
+  mutation: WriteMutation;
+};
+
 /**
- * What a plan captured, and what it intends.
+ * A plan against an issue that already exists.
  *
  * `baseUpdated` is the issue's `updated` timestamp at plan time. Apply re-reads
  * the issue and refuses when it has moved: a plan that was valid is not the
  * same as a plan that is still valid.
  */
-export type WritePlan = {
-  planId: string;
+export type ExistingIssueWritePlan = WritePlanCommon & {
+  kind: "existing-issue";
   issueKey: string;
-  projectKey: string;
-  operation: WriteOperation;
-  /** Only the fields this operation touches. */
-  before: Record<string, unknown>;
-  intendedAfter: Record<string, unknown>;
+  operation: ExistingIssueOperation;
   baseUpdated: string;
-  createdAt: string;
-  expiresAt: string;
   /**
    * The transition Jira offered for this target status, resolved at plan time.
    * Present only for `status.transition` - a transition id is never guessed
    * from a status name.
    */
   transition?: JiraTransition;
-  /** Normalized payload the apply step will send. Never supplied by a caller. */
-  mutation: WriteMutation;
 };
+
+/**
+ * A plan to create an issue that does not exist yet.
+ *
+ * There is no `issueKey` and no `baseUpdated`, and neither is filled with a
+ * placeholder: nothing to name, and no revision to compare. What takes their
+ * place is `schemaRequirements` - creation's concurrency boundary is the
+ * project's create schema, not one issue's revision, so that is what apply
+ * re-checks before it sends anything.
+ */
+export type CreateIssueWritePlan = WritePlanCommon & {
+  kind: "create-issue";
+  operation: "issue.create";
+  before: { issue: null };
+  schemaRequirements: CreateSchemaRequirements;
+};
+
+export type WritePlan = ExistingIssueWritePlan | CreateIssueWritePlan;
+
+/** A plan as it is handed to the store, before an id has been minted. */
+export type NewWritePlan =
+  | Omit<ExistingIssueWritePlan, "planId">
+  | Omit<CreateIssueWritePlan, "planId">;
 
 /** What apply will actually send. Produced by planning, never by an agent. */
 export type WriteMutation =
   | { kind: "comment"; text: string }
   | { kind: "fields"; fields: Record<string, unknown> }
-  | { kind: "transition"; transitionId: string };
+  | { kind: "transition"; transitionId: string }
+  | { kind: "create"; fields: Record<string, unknown> };
 
 /** What `jira_write_plan` returns. The mutation itself is not exposed. */
 export type WritePlanReceipt = {
   status: "planned";
   planId: string;
-  issue: string;
   operation: WriteOperation;
   before: Record<string, unknown>;
   intendedAfter: Record<string, unknown>;
   expiresAt: string;
+  /**
+   * The issue this plan changes. Absent for `issue.create`, which has no issue
+   * yet - a placeholder key here would be a claim JAM cannot make.
+   */
+  issue?: string;
+  /** The project a new issue would be created in. Present for `issue.create`. */
+  project?: string;
   /** How the result of applying this plan will be confirmed. */
   verification: {
     method: "direct-issue-read";
@@ -107,6 +234,7 @@ export type WritePlanReceipt = {
 /** What `jira_write_apply` returns once a direct read has confirmed the change. */
 export type WriteApplyReceipt = {
   status: "applied";
+  /** For `issue.create`, the key Jira minted - known only after applying. */
   issue: string;
   operation: WriteOperation;
   before: Record<string, unknown>;
@@ -119,6 +247,10 @@ export type WriteApplyReceipt = {
 
 export function isWriteOperation(value: string): value is WriteOperation {
   return (WRITE_OPERATIONS as readonly string[]).includes(value);
+}
+
+export function isExistingIssueOperation(value: string): value is ExistingIssueOperation {
+  return (EXISTING_ISSUE_OPERATIONS as readonly string[]).includes(value);
 }
 
 export function isWritableField(value: string): value is WritableField {

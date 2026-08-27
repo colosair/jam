@@ -30,6 +30,10 @@ export const TOOL_COUNT = REGISTER_TOOLS.length;
 /**
  * The external contract: three read tools and two write tools.
  *
+ * What JAM can write grows as operations inside `jira_write_plan`, never as
+ * tools. `issue.create` arrived that way: an agent that knew the write pair
+ * already knew how to reach it.
+ *
  * The read three have been stable since the first release and do not change.
  * The write pair is a single operation split in half on purpose - deciding and
  * doing are separate calls, so an agent cannot mutate Jira without first
@@ -55,6 +59,7 @@ export function createServer(deps: JamDeps): McpServer {
         "jira_write_plan changes nothing - it reads the issue, checks the change is possible, and describes what would happen.",
         "jira_write_apply takes only a planId. There is no way to write without planning first, and no payload to override what the plan decided.",
         "Writes are confined to the configured Jira project, and confirmed by reading the issue back. A write JAM could not verify is never reported as done.",
+        "jira_write_plan also creates issues: operation \"issue.create\", no key, and no project - the new issue goes into the project this workspace is bound to. Planning reads Jira's create schema first, so an unavailable issue type, a disallowed priority or component, and a create screen requiring a field JAM cannot set are refused before anything is sent.",
         "On JAM_WRITE_CONFLICT or JAM_WRITE_PLAN_EXPIRED, plan again against the current state. On JAM_WRITE_UNCERTAIN, read the issue - never retry the apply, which could apply the change twice.",
       ].join("\n"),
     },

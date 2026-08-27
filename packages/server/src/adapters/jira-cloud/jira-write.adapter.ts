@@ -1,3 +1,4 @@
+import { textToAdf } from "../../domain/adf.js";
 import { JamError } from "../../domain/errors.js";
 import type { JiraTransition } from "../../domain/write.js";
 import type { CredentialPort } from "../../ports/credentials.port.js";
@@ -30,6 +31,36 @@ export class JiraCloudWriteAdapter implements JiraWritePort {
     this.client = fetchImpl
       ? new JiraClient(credentials, fetchImpl)
       : new JiraClient(credentials);
+  }
+
+  /**
+   * Create one issue, once.
+   *
+   * `retry: false` matters more here than anywhere else behind this port. A
+   * retried update converges; a retried create leaves two issues, and the
+   * second one has a different key nobody is holding. An ambiguous failure is
+   * handed to the application layer as JAM_WRITE_UNCERTAIN and resolved by
+   * looking, never by sending it again.
+   */
+  async createIssue(fields: Record<string, unknown>): Promise<{ id: string; key: string }> {
+    const { data } = await this.client.request<{ id?: string; key?: string }>({
+      path: "rest/api/3/issue",
+      method: "POST",
+      body: { fields },
+      retry: false,
+    });
+
+    if (!data?.key || !data.id) {
+      // Jira took the request and told us nothing identifying, so an issue may
+      // now exist that JAM cannot name. That is exactly the uncertain case:
+      // report it, do not retry, and let a person look.
+      throw new JamError(
+        "JAM_WRITE_UNCERTAIN",
+        "Jira accepted a create but returned no issue key, so JAM cannot tell which issue it made - or whether it made one. Look in the project before trying again: retrying could create a second issue.",
+        { project: (fields["project"] as { key?: string } | undefined)?.key },
+      );
+    }
+    return { id: data.id, key: data.key };
   }
 
   async updateIssue(key: string, fields: Record<string, unknown>): Promise<void> {
@@ -95,26 +126,4 @@ export class JiraCloudWriteAdapter implements JiraWritePort {
       retry: false,
     });
   }
-}
-
-/**
- * Plain text to the narrowest ADF that represents it.
- *
- * Blank lines separate paragraphs; everything else is literal. No markdown is
- * interpreted, so a comment containing `*` or `#` says what it says.
- */
-export function textToAdf(text: string): unknown {
-  const paragraphs = text
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter(Boolean);
-
-  return {
-    type: "doc",
-    version: 1,
-    content: (paragraphs.length > 0 ? paragraphs : [text]).map((block) => ({
-      type: "paragraph",
-      content: [{ type: "text", text: block }],
-    })),
-  };
 }

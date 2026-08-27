@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { JamError } from "../domain/errors.js";
-import type { WritePlan } from "../domain/write.js";
+import type { NewWritePlan, WritePlan } from "../domain/write.js";
 import { planExpired } from "../policy/write-policy.js";
 
 /**
@@ -26,9 +26,9 @@ export class WritePlanStore {
   /** Injected by tests so expiry does not depend on wall-clock timing. */
   constructor(private readonly now: () => Date = () => new Date()) {}
 
-  create(plan: Omit<WritePlan, "planId">): WritePlan {
+  create(plan: NewWritePlan): WritePlan {
     this.evictExpired();
-    const stored: WritePlan = { ...plan, planId: randomUUID() };
+    const stored: WritePlan = { ...plan, planId: randomUUID() } as WritePlan;
     this.plans.set(stored.planId, stored);
     return stored;
   }
@@ -51,10 +51,22 @@ export class WritePlanStore {
     }
     if (planExpired(plan.expiresAt, this.now())) {
       this.plans.delete(planId);
+      // What to re-plan against differs by plan: an existing issue has a
+      // current state, a create has only the project's current create schema.
+      // Naming an issue key here for a create would name an issue that has
+      // never existed.
       throw new JamError(
         "JAM_WRITE_PLAN_EXPIRED",
-        `This write plan expired at ${plan.expiresAt}. Re-plan against the current state of ${plan.issueKey}.`,
-        { planId, issueKey: plan.issueKey, expiresAt: plan.expiresAt },
+        plan.kind === "create-issue"
+          ? `This write plan expired at ${plan.expiresAt}. Nothing was created - re-plan against the current create schema for project ${plan.projectKey}.`
+          : `This write plan expired at ${plan.expiresAt}. Re-plan against the current state of ${plan.issueKey}.`,
+        {
+          planId,
+          expiresAt: plan.expiresAt,
+          ...(plan.kind === "create-issue"
+            ? { project: plan.projectKey }
+            : { issueKey: plan.issueKey }),
+        },
       );
     }
     return plan;

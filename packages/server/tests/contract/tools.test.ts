@@ -94,6 +94,27 @@ describe("tool contract", () => {
     expect(byName["jira_write_apply"]?.idempotentHint).toBe(false);
   });
 
+  it("carries issue.create as an operation, not as a sixth tool", async () => {
+    // The whole point of the plan/apply shape is that adding what JAM can
+    // write does not widen what an agent has to know. A new operation belongs
+    // in the enum; a new tool would be a breaking change to the contract.
+    const { tools } = await client.listTools();
+    const schema = tools.find((t) => t.name === "jira_write_plan")?.inputSchema as {
+      properties?: Record<string, { enum?: string[] }>;
+      required?: string[];
+    };
+
+    expect(schema?.properties?.["operation"]?.enum).toEqual([
+      "comment.add",
+      "field.update",
+      "status.transition",
+      "issue.create",
+    ]);
+    // `key` is not required, because issue.create has no issue to name. The
+    // operations that do have one are refused without it at the server.
+    expect(schema?.required).toEqual(["operation", "input"]);
+  });
+
   it("states the evidence boundary in every read tool description", async () => {
     const { tools } = await client.listTools();
 
