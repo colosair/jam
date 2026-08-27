@@ -112,9 +112,32 @@ registry source from running elsewhere.
      here is the host's policy, not a JAM defect and not a documentation
      defect.
    - **A1 — documented exact trust.** Exactly the user-local rules this
-     repository documents, and nothing broader. **A1 must pass.** If it does
-     not, the fallback JAM documents does not work, and that is a release
-     blocker — fix the documented contract, do not widen the rule.
+     repository documents, and nothing broader. A1 is a *fallback* gate: it
+     answers whether the documented rule clears a refusal, so it is only
+     observable when there was a refusal to clear. **Run it when A0 was
+     blocked, and then it must pass.** If A0 passed, the host allowed the
+     command on its own and the rule's effect cannot be separated from that -
+     record A1 as *not exercised*, never as passed.
+
+     When A1 does run, all of this holds or the run does not count:
+
+     ```text
+     A0 blocked first
+     exact user-level rule present, nothing broader
+     autoMode.classifyAllShell recorded
+     command bare: no pipe, redirect, chaining, env prefix, wrapper
+     classifier PASS
+     JAM process started
+     ```
+
+     The command has to be the one the rule names. A host matches the rule
+     against the whole command line, so a wrapped invocation cannot match an
+     exact rule - and a wrapped invocation that was allowed proves something
+     about the host's own judgement, not about the rule. **A wrapped command is
+     not A1 evidence.**
+
+     If A1 runs and fails: do not widen the rule, do not rewrite the command,
+     do not tag. Fix the documented contract.
 
    **Gate B — JAM bootstrap.** Once the process is running:
 
@@ -161,8 +184,17 @@ registry source from running elsewhere.
    established through whatever user-level intent that host offers instead. An
    A1 result recorded without that value cannot be compared to the next one.
 
-7. **Tag** the release commit and push the tag — after A1 and Gate B have
-   passed against the published packages, never before.
+7. **Tag** the release commit and push the tag — after acceptance against the
+   published packages, never before. Acceptance closes in one of three ways:
+
+   ```text
+   A0 pass     + Gate B pass                 release (A1 not exercised)
+   A0 blocked  + A1 pass    + Gate B pass    release
+   A0 blocked  + A1 fail                     blocked - fix the contract
+   ```
+
+   Gate B always has to pass. A measurement that was not taken is recorded as
+   not taken; it is never written up as a pass.
 8. **GitHub Release** against that tag.
 
 Publishing stays a human step. CI is automatic; `npm publish` is not. An npm
@@ -231,53 +263,75 @@ npx --yes @jam-mcp/bootstrap@1.3.1 setup --agent
 Same refusal, same absence of output. **A0 = blocked, for the unwrapped
 canonical command.**
 
-### 2026-08-28 — the documented rule lets the same command through
+### 2026-08-28 — an A1 that was not an A1
 
-Same machine and host as above, `autoMode.classifyAllShell` still unset. One
-rule added, in the user's own settings (`~/.claude/settings.json`), and nothing
-broader:
+Recorded first as a pass, and corrected here from the session transcripts. The
+correction is the useful part, so the entry stays.
+
+One rule was added, in the user's own settings, and nothing broader:
 
 ```text
 Bash(npx --yes @jam-mcp/bootstrap@1.3.1 setup --agent)
 ```
 
-Then the same command, unchanged:
+The command that then ran was not that command:
 
 ```text
-npx --yes @jam-mcp/bootstrap@1.3.1 setup --agent
+npx --yes @jam-mcp/bootstrap@1.3.1 setup --agent 2>&1 | tail -60
 ```
+
+It was allowed, JAM started, and the first state was
+`JAM_PROJECT_SELECTION_REQUIRED`. But a host matches a rule against the whole
+command line, and the rule names no redirection or pipe - so this invocation
+could not have matched it. **The run does not establish that the documented
+rule clears a refusal.** What allowed it is not something this measurement can
+say.
 
 ```text
-host                        Claude Code, Auto Mode
-permission scope            user-level
-permission type             exact Bash rule
-autoMode.classifyAllShell   unset / default
-canonical command           pure, unwrapped
-classifier                  PASS
-JAM process started         yes
-first observed JAM state    JAM_PROJECT_SELECTION_REQUIRED
+A1 pre-probe   NOT ESTABLISHED
+reason         executed command was wrapped; it cannot match the exact rule
 ```
 
-The host allowed it, JAM started, and the first thing it said was a JAM human
-boundary - Gate B's business, no longer the host's. **A1 = pass**, measured
-against 1.3.1 before 1.3.2 was published, so the contract this release
-documents was known to work before it was written down as the fallback. It does
-not stand in for the release gate: A1 has to pass again against the published
-1.3.2 packages, with the rule pinned to that version, before there is a tag.
+Two things this cost, both now fixed. The gate above became conditional,
+because A1 was being run in conditions where it could not be observed. And the
+purity rule stopped being advice: a wrapper does not merely risk a refusal, it
+puts the invocation outside the one rule written to permit it.
 
-Note what the exact rule had to match: the command with nothing around it. The
-refused invocation in the entry above carried `2>&1 | tail -60`, and no rule
-written for the canonical command would have matched that. Same host, same
-day, same package - the difference was the wrapper.
+### 2026-08-27 — 1.3.2, published
+
+Claude Code 2.1.247, macOS, Auto Mode on, `autoMode.classifyAllShell` unset.
+Three invocations of `setup --agent` against the published 1.3.2 packages, and
+every one of them carried `2>&1` - the agent added it each time, unprompted.
+
+```text
+A0 published    NOT MEASURED for the canonical command
+                a wrapped variant was allowed on a pristine host
+A1 published    NOT EXERCISED
+                nothing was refused, so nothing needed clearing
+Gate B          PASS
+                setup: ready · doctor: ready · actual Jira read: PASS
+                MCP contract: 5 tools · repository footprint: none
+```
+
+Gate B stands on its own: `doctor --json` reported `ready` with every check
+passing, including the two that are real Jira round trips.
+
+Worth keeping next to the 1.3.1 entry: that host refused the bare canonical
+command at 1.3.1 and allowed a wrapped one at 1.3.2, a few hours and a host
+version apart. A host's judgement is not a fixed property to design against -
+which is why A0 is an observation and not a bar, and why the fallback exists
+whether or not any given day needs it.
 
 <!-- release-check: historical-evidence:end -->
 
 What that establishes, and what it does not: a pristine auto-mode host can
 refuse the canonical bootstrap on its own judgement, with the command in its
 simplest possible form. It is therefore not a wrapper defect, and no rewriting
-of the command is the fix. What JAM guarantees instead is A1, and the second
-entry above is that guarantee measured rather than asserted: the exact, narrow,
-user-local rule this repository documents does let the same command through.
+of the command is the fix. What JAM offers in that case is A1 - and as the
+entries above record, A1 has not yet been observed under conditions where it
+could be: every attempt either ran a wrapped command the rule could not match,
+or ran on a host that was not refusing anything. The fallback is documented and
+unmeasured, and this file says so rather than rounding it up.
 
 The wrapper is still worth forbidding, for a separate and now-documented
 reason: a host matches permission rules against the whole command, and a pipe
