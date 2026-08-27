@@ -195,7 +195,47 @@ registry source from running elsewhere.
 
    Gate B always has to pass. A measurement that was not taken is recorded as
    not taken; it is never written up as a pass.
-8. **GitHub Release** against that tag.
+
+   Tag annotated, never lightweight, with `JAM v<version>` as the first line
+   and a short paragraph saying what the release is for. An annotated tag
+   carries its own message and its own author; a lightweight one is a name
+   pointing at a commit, and the release it stands for has to be reconstructed
+   from elsewhere. Both kinds are in this repository's history, which is the
+   argument for writing the rule down.
+8. **GitHub Release** against that tag, titled `JAM v<version>` — the title is
+   the same for every release, and what the release is about belongs in the
+   notes rather than in it.
+
+   Open with a paragraph or two, unheaded, saying what an agent or a person can
+   now do that they could not before, and what did not change. Then the
+   sections that explain it. Then, always and last:
+
+   - **`## Upgrading`** — which launcher pin to change and where, and what
+     stays put. The wording barely varies between releases, and it should not:
+     it is the same instruction each time.
+   - **`## Verified`** — the test count from Windows, release consistency, the
+     smoke check count, CI, and the acceptance this release actually got.
+     Written under the same redaction rule as everything else here.
+
+   A release that adds no feature still has both sections. "Nothing to upgrade
+   beyond the pin" and "here is what was verified" are answers a reader came
+   for.
+
+## How a change gets to main
+
+The gates above check what is in the tree. These are about how it gets there,
+and they are written down for the same reason the ones above are: this
+repository has drifted on each of them at least once.
+
+- **Squash merge, and the commit subject is the PR title** - without a `(#N)`
+  suffix. `gh pr merge --squash` appends one by default; pass the subject
+  explicitly, or fix it, so `git log` reads the same as the changelog a person
+  would write. Both forms are in the history.
+- **A lockstep version bump is its own `chore(release)` PR.** Bundling it into
+  the feature PR means the bump and the feature cannot be reverted apart, and
+  the release commit stops being identifiable in the log.
+- **The branch prefix matches the commit type.** A `docs(...)` change on a
+  `fix/...` branch is a small lie in two places at once.
 
 Publishing stays a human step. CI is automatic; `npm publish` is not. An npm
 version cannot be taken back, the release cadence is low, and the manual cost is
