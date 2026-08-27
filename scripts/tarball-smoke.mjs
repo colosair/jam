@@ -32,11 +32,18 @@
  * runtime config and project config came from the sandbox and not the host,
  * which is what the checks below assert.
  */
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { execFile, execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+
+/** No command here should take anywhere near this long; a hang is a failure. */
+const COMMAND_TIMEOUT_MS = 120_000;
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packDir = join(repoRoot, "private", "packs");
@@ -111,6 +118,38 @@ function runBin(bin, args, { cwd, home, env = {} }) {
       stdout: err.stdout?.toString() ?? "",
       stderr: err.stderr?.toString() ?? "",
     };
+  }
+}
+
+/**
+ * The async twin of `runBin`, for the one sandbox that has to answer HTTP
+ * requests while a command is running. `execFileSync` blocks the event loop,
+ * so an in-process mock server would never get a turn.
+ */
+async function runBinAsync(bin, args, { cwd, home, env = {} }) {
+  try {
+    const { stdout } = await execFileAsync(bin, args, {
+      cwd,
+      env: isolatedEnv(home, env),
+      encoding: "utf8",
+      shell: process.platform === "win32",
+      timeout: COMMAND_TIMEOUT_MS,
+    });
+    return { code: 0, stdout, stderr: "" };
+  } catch (err) {
+    return {
+      code: err.code ?? 1,
+      stdout: err.stdout?.toString() ?? "",
+      stderr: err.stderr?.toString() ?? "",
+    };
+  }
+}
+
+function parseJson(stdout) {
+  try {
+    return JSON.parse(stdout);
+  } catch {
+    return undefined;
   }
 }
 
@@ -244,6 +283,215 @@ process.stdout.write("\n@jam-mcp/bootstrap\n");
     JSON.stringify(parsed?.code),
   );
   check("applied nothing it could not decide", parsed?.changesApplied === false);
+}
+
+// ------------------------------------------ agent bootstrap, end to end
+
+/**
+ * The one gate that walks the whole path a coding agent walks: install from
+ * the tarballs, bind the project it is standing in, register MCP beside
+ * whatever is already registered, stop where a person is required, and finish
+ * at a `doctor` that has actually talked to Jira.
+ *
+ * A zero-base agent session failed at exactly this sequence once - it asked
+ * whether to replace an existing Atlassian MCP, asked whether setup needed a
+ * Jira issue, and never reached a canonical install. The rules that answer
+ * those questions live in prose; this proves the machinery underneath them
+ * still does what the prose promises.
+ *
+ * Jira here is a local http server. It answers only the four endpoints the
+ * health gate and project listing reach for, demands the sandbox's own Basic
+ * credentials on every one of them, and counts what it was asked - so "ready"
+ * has to be the result of real round trips rather than a check that quietly
+ * skipped.
+ *
+ * `--shared` is deliberate. Personal scope registers with whatever host CLIs
+ * happen to be on this machine's PATH, which is not a thing a release gate can
+ * assert; shared scope writes files into the sandbox, which is. The invariant
+ * it does not weaken: nothing here passes `--shared` on JAM's behalf, the test
+ * asks for it explicitly.
+ */
+process.stdout.write("\n@jam-mcp/bootstrap - agent bootstrap end to end\n");
+{
+  const EMAIL = "smoke@example.com";
+  const TOKEN = "smoke-token";
+  const EXPECTED_AUTH = `Basic ${Buffer.from(`${EMAIL}:${TOKEN}`).toString("base64")}`;
+  const ISSUE = {
+    key: "MOCK-1",
+    fields: {
+      summary: "Smoke issue",
+      status: { name: "To Do" },
+      updated: "2026-08-27T00:00:00.000+0000",
+      issuelinks: [],
+    },
+  };
+
+  const hits = new Map();
+  let unauthorized = 0;
+  let unknownRoutes = [];
+
+  const server = createServer((req, res) => {
+    const route = new URL(req.url, "http://127.0.0.1").pathname;
+    hits.set(route, (hits.get(route) ?? 0) + 1);
+
+    const send = (status, body) => {
+      const text = JSON.stringify(body);
+      res.writeHead(status, { "Content-Type": "application/json" });
+      res.end(text);
+    };
+
+    // Presence of a credential is not proof it reached Jira; this is.
+    if (req.headers.authorization !== EXPECTED_AUTH) {
+      unauthorized++;
+      send(401, { errorMessages: ["unauthenticated"] });
+      return;
+    }
+
+    switch (route) {
+      case "/rest/api/3/project/search":
+        return send(200, { isLast: true, values: [{ key: "MOCK", name: "Mock Project" }] });
+      case "/rest/api/3/myself":
+        return send(200, { accountId: "acc-1", displayName: "Smoke Agent" });
+      case "/rest/api/3/search/jql":
+        return send(200, { issues: [ISSUE] });
+      case "/rest/api/3/issue/bulkfetch":
+        req.resume();
+        return send(200, { issues: [ISSUE] });
+      default:
+        unknownRoutes.push(route);
+        return send(404, { errorMessages: ["not mocked"] });
+    }
+  });
+
+  try {
+    await new Promise((ok) => server.listen(0, "127.0.0.1", ok));
+    const jira = { JIRA_BASE_URL: `http://127.0.0.1:${server.address().port}`, JIRA_EMAIL: EMAIL, JIRA_API_TOKEN: TOKEN };
+
+    const { dir, home, work } = sandbox("agent");
+    const bin = join(
+      install(dir, home, [
+        tarball("jam-mcp-launcher"),
+        tarball("jam-mcp-server"),
+        tarball("jam-mcp-bootstrap"),
+      ]),
+      "jam-bootstrap",
+    );
+    // The project is a git repository, the way a real one is - and it already
+    // has an MCP server that is not JAM.
+    mkdirSync(join(work, ".git"), { recursive: true });
+    writeFileSync(
+      join(work, ".mcp.json"),
+      JSON.stringify({ mcpServers: { atlassian: { command: "noop-atlassian" } } }, null, 2),
+      "utf8",
+    );
+
+    // 1. No key anywhere: JAM offers what it can see and refuses to guess.
+    const selection = parseJson(
+      (await runBinAsync(bin, ["setup", "--agent"], { cwd: work, home, env: jira })).stdout,
+    );
+    check(
+      "asks which Jira project rather than inventing one",
+      selection?.code === "JAM_PROJECT_SELECTION_REQUIRED",
+      JSON.stringify(selection?.code),
+    );
+    check(
+      "enumerates the projects the credentials can actually see",
+      selection?.projects?.some((p) => p.key === "MOCK") === true,
+      JSON.stringify(selection?.projects),
+    );
+    check("changed nothing while it could not decide", selection?.changesApplied === false);
+
+    // 2. Key known, credentials absent: the wiring still happens, and the stop
+    //    hands over something a person can act on.
+    const auth = parseJson(
+      (await runBinAsync(bin, ["setup", "--agent", "--project", "MOCK", "--shared"], { cwd: work, home })).stdout,
+    );
+    check("stops for authentication", auth?.code === "JAM_AUTH_REQUIRED", JSON.stringify(auth?.code));
+    check("offers the person a command, not the agent one", auth?.nextAction?.command === undefined);
+    check(
+      "the command it offers runs on a machine with nothing installed",
+      /^npx --yes @jam-mcp\/\S+@\d+\.\d+\.\d+ auth login$/.test(auth?.nextAction?.userCommand ?? ""),
+      JSON.stringify(auth?.nextAction?.userCommand),
+    );
+    check(
+      "names the variables that would do instead",
+      JSON.stringify(auth?.nextAction?.env) ===
+        JSON.stringify(["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"]),
+      JSON.stringify(auth?.nextAction?.env),
+    );
+    check("applied the wiring it could apply first", auth?.changesApplied === true);
+    check("bound the project it was standing in", existsSync(join(work, ".jira-agent", "project.yaml")));
+
+    const mcp = JSON.parse(readFileSync(join(work, ".mcp.json"), "utf8"));
+    check("registered JAM", typeof mcp.mcpServers?.jam === "object");
+    check(
+      "left the Atlassian MCP exactly where it was",
+      mcp.mcpServers?.atlassian?.command === "noop-atlassian",
+      JSON.stringify(mcp.mcpServers?.atlassian),
+    );
+
+    // 3. Credentials present, runtime still unchosen: a stop the agent clears
+    //    by itself, so it comes with a command rather than a question.
+    const runtime = parseJson(
+      (await runBinAsync(bin, ["setup", "--agent", "--project", "MOCK", "--shared"], { cwd: work, home, env: jira })).stdout,
+    );
+    check(
+      "stops for the runtime once credentials resolve",
+      runtime?.code === "JAM_RUNTIME_CONFIG_MISSING",
+      JSON.stringify(runtime?.code),
+    );
+    check(
+      "hands back a runnable command for the step it cannot decide",
+      /^npx --yes @jam-mcp\/\S+@\d+\.\d+\.\d+ runtime use package$/.test(runtime?.nextAction?.command ?? ""),
+      JSON.stringify(runtime?.nextAction?.command),
+    );
+    check(
+      "re-applies nothing that is already in place",
+      runtime?.changesApplied === false,
+      JSON.stringify(runtime?.changesApplied),
+    );
+
+    // 4. The agent clears it. Same command, run from the install rather than
+    //    npx, so the sandbox stays off the network.
+    const chose = await runBinAsync(bin, ["runtime", "use", "package"], { cwd: work, home, env: jira });
+    check("the runtime step succeeds unattended", chose.code === 0, chose.stderr.slice(0, 200));
+
+    // 5. Nothing left for a person: setup verifies rather than reporting.
+    const ready = parseJson(
+      (await runBinAsync(bin, ["setup", "--agent", "--project", "MOCK", "--shared"], { cwd: work, home, env: jira })).stdout,
+    );
+    check("reaches READY", ready?.status === "ready", JSON.stringify(ready?.code ?? ready?.status));
+    const named = (part) => ready?.checks?.find((c) => c.name.includes(part));
+    check("proved Jira authentication", named("Jira authentication")?.ok === true);
+    check("proved a JQL search against the bound project", named("JQL search")?.ok === true);
+    check("proved the issue detail endpoint", named("Issue detail")?.ok === true);
+    check(
+      "no fatal check reported a failure",
+      ready?.checks?.every((c) => !c.fatal || c.ok) === true,
+      JSON.stringify(ready?.checks?.filter((c) => c.fatal && !c.ok)),
+    );
+
+    // 6. And doctor agrees, standing on its own.
+    const doc = parseJson((await runBinAsync(bin, ["doctor", "--json"], { cwd: work, home, env: jira })).stdout);
+    check("doctor agrees, on its own", doc?.status === "ready", JSON.stringify(doc?.status));
+
+    // 7. Server side: READY was earned by round trips, not skipped checks.
+    for (const route of [
+      "/rest/api/3/project/search",
+      "/rest/api/3/myself",
+      "/rest/api/3/search/jql",
+      "/rest/api/3/issue/bulkfetch",
+    ]) {
+      check(`called ${route}`, (hits.get(route) ?? 0) > 0);
+    }
+    check("asked for nothing this mock does not model", unknownRoutes.length === 0, unknownRoutes.join(", "));
+    // Every route above rejects anything but this sandbox's exact Basic
+    // credentials, so zero refusals across a run that got answers means each
+    // call carried them - and that JAM never tried Jira before it had them.
+    check("never reached Jira without credentials", unauthorized === 0, `${unauthorized} refused`);
+  } finally {
+    await new Promise((ok) => server.close(ok));
+  }
 }
 
 for (const dir of cleanups) rmSync(dir, { recursive: true, force: true });

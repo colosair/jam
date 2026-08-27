@@ -1026,75 +1026,37 @@ Claude Code
 
 ---
 
-# 15. 팀 설치 UX
+# 15. 팀 설치 UX — superseded
 
-초기 팀 도입은 다음 한 줄을 목표로 한다.
+이 절이 상정했던 `./scripts/setup-jira-agent.ps1`(clone 후 `npm ci` + build)는
+구현되지 않았고, 앞으로도 구현하지 않는다. 설치는 저장소를 clone하지 않는
+zero-install 경로로 대체됐다.
 
-```powershell
-./scripts/setup-jira-agent.ps1
+```bash
+npx --yes @jam-mcp/bootstrap@1.3.1 init         # 사람
+npx --yes @jam-mcp/bootstrap@1.3.1 setup --agent # 코딩 에이전트
 ```
 
-스크립트 역할:
-
-```text
-Node 버전 확인
-jira-agent 설치/업데이트
-npm ci
-build
-환경 변수 확인
-Jira 인증 테스트
-project config 검증
-doctor 실행
-```
-
-성공 출력 예:
-
-```text
-[OK] Node 20+
-[OK] jira-agent build
-[OK] Project config
-[OK] Jira authentication
-[OK] PROJECT access
-[OK] MCP executable
-```
-
-그 후:
-
-```text
-claude
-```
-
-실행.
-
-최초 project MCP 승인 후 평소처럼 사용한다.
+배포·부트스트랩의 설계 정본은 `docs/architecture/distribution-and-bootstrap.md`,
+결정 근거는 `docs/decisions/adr-unified-runtime-and-agent-setup.md`에 있다.
+clone·build를 설치 절차로 적어 둔 문서가 있으면 그 문서가 틀린 것이다 — 에이전트가
+README에서 설치 절차를 지어내던 문제가 이 절에서 시작됐다.
 
 ---
 
-# 16. Doctor
+# 16. Doctor — superseded
 
-반드시 제공한다.
+`doctor`는 제공된다. 다만 CLI 이름은 `jira-agent`가 아니라 `jam`이고,
+zero-install 형태는 다음이다.
 
-```text
-jira-agent doctor
+```bash
+npx --yes @jam-mcp/bootstrap@1.3.1 doctor --json
 ```
 
-검증:
-
-```text
-Node runtime
-Project config
-Credential presence
-Jira base URL
-Jira authentication
-Project permission
-JQL search endpoint
-Issue detail endpoint
-MCP stdio startup
-```
-
-목표:
-
-> MCP 문제인지 Jira 문제인지 환경 문제인지 즉시 구분한다.
+검사 항목의 정본은 코드다: `packages/server/src/bootstrap/boot-health-gate.ts`.
+현재 `full` 게이트는 이 절이 나열한 항목을 모두 포함하며, 마지막 두 검사는
+실제 Jira 왕복(JQL 검색, issue 상세)이다. `boot` 모드는 네트워크 검사 앞에서
+멈춘다.
 
 ---
 

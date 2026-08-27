@@ -103,7 +103,7 @@ Neither touches a project.
 ```json
 {
   "mcpServers": {
-    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.3.0", "serve"] }
+    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.3.1", "serve"] }
   }
 }
 ```
@@ -155,6 +155,14 @@ is what keeps the purity above literally true rather than aspirational.
 | `JAM_PROJECT_CONFIG_INVALID` | `project.yaml` exists but will not parse — refuse, do not overwrite |
 | `JAM_MCP_CONFIG_UNREADABLE` | `.mcp.json` is not valid JSON — refuse, do not overwrite |
 | `JAM_MIGRATION_TARGET_UNAVAILABLE` | `--migrate` was asked for, but the launcher package could not be resolved — `.mcp.json` left unchanged |
+
+Each stop says what it wants through `nextAction`, and the field it uses says
+who acts. `command` is for the caller to run — `configure_runtime` carries one,
+and an agent that stops to ask about it is stopping for nothing.
+`JAM_AUTH_REQUIRED` deliberately carries none: login is interactive and
+human-only, so it carries `userCommand` to show the person and `env` naming the
+variables that would satisfy it instead. An agent relays those; it never runs
+the one and never asks for the values of the other.
 
 ### Where credentials come from
 
@@ -286,12 +294,20 @@ would silently change what a teammate's editor launches.
 ## Agent entry points
 
 ```bash
-jam setup --agent                          # one shot: detect, plan, apply safe, verify
-jam setup plan --json                      # what would change, changing nothing
-jam setup apply --non-interactive --json   # execute
-jam doctor --json
-jam auth status --json                     # presence and origin, never the value
+# one shot: detect, plan, apply safe, verify
+npx --yes @jam-mcp/bootstrap@1.3.1 setup --agent
+# what would change, changing nothing
+npx --yes @jam-mcp/bootstrap@1.3.1 setup plan --json
+# execute
+npx --yes @jam-mcp/bootstrap@1.3.1 setup apply --non-interactive --json
+npx --yes @jam-mcp/bootstrap@1.3.1 doctor --json
+# presence and origin, never the value
+npx --yes @jam-mcp/bootstrap@1.3.1 auth status --json
 ```
+
+Bootstrap, not `jam` — an agent's first command runs on a machine with no
+global install and no `~/.jam/config.yaml`, so the short form is a convenience
+for people who already have one, never the documented entry point.
 
 Contract: **stdout is a single parseable JSON document**, no ANSI, no prompts;
 stderr carries diagnostics. Enforced by tests that parse the whole of stdout
