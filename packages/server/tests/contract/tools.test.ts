@@ -115,6 +115,23 @@ describe("tool contract", () => {
     expect(schema?.required).toEqual(["operation", "input"]);
   });
 
+  it("hands an unknown write field to JAM rather than dropping it at the schema", async () => {
+    // A stripping schema would answer this by creating an issue with no
+    // assignee and a receipt that never mentions one was asked for. The
+    // refusal has to come from JAM, by name, with the supported list.
+    const result = await client.callTool({
+      name: "jira_write_plan",
+      arguments: {
+        operation: "issue.create",
+        input: { issueType: "Task", summary: "x", assignee: "someone" },
+      },
+    });
+
+    expect(payload(result)).toMatchObject({
+      error: { code: "JAM_WRITE_FIELD_NOT_ALLOWED", details: { rejected: ["assignee"] } },
+    });
+  });
+
   it("states the evidence boundary in every read tool description", async () => {
     const { tools } = await client.listTools();
 
