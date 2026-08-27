@@ -70,10 +70,10 @@ auth login   Store Jira credentials in this user's OS secret store
 runtime      Show or change which JAM build this machine runs
 ```
 
-Written out, that is `npx --yes @jam-mcp/launcher@1.2.0 doctor`, or just `jam
+Written out, that is `npx --yes @jam-mcp/launcher@1.3.0 doctor`, or just `jam
 doctor` if you took the launcher's optional global install. Starting from
 nothing — no install, no runtime chosen yet — use
-`npx --yes @jam-mcp/bootstrap@1.2.0 init` instead.
+`npx --yes @jam-mcp/bootstrap@1.3.0 init` instead.
 
 Credentials come from the process environment or this user's OS secret store —
 never from a repository file — and never appear in logs, telemetry, or tool

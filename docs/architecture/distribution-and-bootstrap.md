@@ -103,7 +103,7 @@ Neither touches a project.
 ```json
 {
   "mcpServers": {
-    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.2.0", "serve"] }
+    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.3.0", "serve"] }
   }
 }
 ```
