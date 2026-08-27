@@ -17,6 +17,7 @@
     "smoke": "npm run pack:all && npm run smoke:packed",
     "smoke:packed": "node scripts/tarball-smoke.mjs",
     "release:check": "node scripts/release-check.mjs",
+    "release:verify": "npm run build && npm run test && npm run release:check && npm run smoke",
     "doctor": "node packages/server/dist/index.js doctor",
     "serve": "node packages/server/dist/index.js serve"
   },

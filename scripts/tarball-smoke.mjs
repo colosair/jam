@@ -57,8 +57,11 @@ function isolatedEnv(home, extra = {}) {
     npm_config_cache: join(home, ".npm-cache"),
     NO_COLOR: "1",
     // Set after the JAM_* strip above, or the loop would remove it. Keeps the
-    // sandbox off the developer's own secret store and off the network with it.
+    // sandbox off the developer's own secret store and off the network with it,
+    // and on Windows off HKCU\Environment - neither of which a repointed HOME
+    // isolates, because both are per-user rather than per-HOME.
     JAM_DISABLE_SECRET_STORE: "1",
+    JAM_DISABLE_USER_ENV: "1",
     ...extra,
   };
 }

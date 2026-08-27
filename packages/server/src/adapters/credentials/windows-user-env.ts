@@ -17,10 +17,14 @@ export type RegQueryFn = (name: string) => string | undefined;
  * anywhere - `read()` only returns it to the caller for in-memory use.
  */
 export class WindowsUserEnvCredentialSource implements CredentialValueSource {
-  constructor(private readonly queryFn: RegQueryFn = defaultRegQuery) {}
+  constructor(
+    private readonly queryFn: RegQueryFn = defaultRegQuery,
+    private readonly env: NodeJS.ProcessEnv = process.env,
+  ) {}
 
   read(): RawCredentialValues {
     if (process.platform !== "win32") return {};
+    if (userEnvDisabled(this.env)) return {};
 
     const out: RawCredentialValues = {};
     for (const key of CREDENTIAL_ENV_KEYS) {
@@ -29,6 +33,23 @@ export class WindowsUserEnvCredentialSource implements CredentialValueSource {
     }
     return out;
   }
+}
+
+/**
+ * Escape hatch for isolated test sandboxes, matching JAM_DISABLE_SECRET_STORE.
+ *
+ * HKCU\Environment is per-user, not per-HOME, so repointing HOME does not make
+ * a sandbox credential-free on Windows: a developer who ran `setx JIRA_API_TOKEN`
+ * once has credentials that every process of theirs can see. Without this, a
+ * hermetic test would pass or fail depending on whose machine ran it, and
+ * "zero HOME" would be mistaken for "zero credentials".
+ *
+ * Not a user-facing feature. Production never sets it.
+ */
+const DISABLE_ENV = "JAM_DISABLE_USER_ENV";
+
+export function userEnvDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return Boolean(env[DISABLE_ENV]);
 }
 
 const VALUE_LINE = /^\s*\S+\s+REG_(?:SZ|EXPAND_SZ)\s+(.*)$/;

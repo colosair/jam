@@ -35,6 +35,12 @@ export type AuthOptions = {
    * it) is about the ordering, not about the network.
    */
   verify?: (values: StoredCredentials) => Promise<string | undefined>;
+  /**
+   * Injected by tests. The suite runs with JAM_DISABLE_SECRET_STORE set so it
+   * cannot reach a real keychain, which would otherwise make every "no store
+   * on this system" case report the disabled one instead.
+   */
+  env?: NodeJS.ProcessEnv;
 };
 
 const TOKEN_URL = "https://id.atlassian.com/manage-profile/security/api-tokens";
@@ -90,13 +96,14 @@ export async function authLoginCommand(options: AuthOptions = {}): Promise<numbe
   const ui = options.ui ?? new Ui();
   const store = "store" in options ? options.store : resolveSecretStore();
   const readBack = options.readBack ?? freshPort;
+  const env = options.env ?? process.env;
 
   ui.section("Authentication");
 
   if (!store) {
     // Disabled and absent are different problems with different fixes, and
     // saying "no store" when one was switched off sends the user hunting.
-    if (secretStoreDisabled()) {
+    if (secretStoreDisabled(env)) {
       ui.failure("Secret store disabled by JAM_DISABLE_SECRET_STORE");
       ui.line("  That variable is for isolated test sandboxes. Unset it and run this again.");
       ui.next(ENV_HINT);

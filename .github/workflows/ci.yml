@@ -1,0 +1,48 @@
+# The release gate a developer runs, run by the repository on every change.
+#
+# One job, one command: `npm run release:verify` is the same gate locally and
+# here, so CI cannot quietly prove less than a developer does. Steps live in
+# package.json rather than in this file for that reason.
+#
+# No Jira credentials, deliberately. Everything here must pass on a machine
+# that has never seen a Jira token - source correctness is a separate question
+# from whether a Jira instance is reachable, and mixing them makes a red build
+# ambiguous. Live `jam doctor` acceptance stays in the release procedure, run
+# by a human against a real site.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing is a real answer about that platform, so let the
+      # other finish rather than reporting a single red square for both.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ["20.x", "22.x"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      # `ci`, not `install`: the lockfile is part of what is under test, and a
+      # release whose lockfile has drifted is exactly what release:check fails on.
+      - run: npm ci
+
+      - run: npm run release:verify

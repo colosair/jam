@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createServer } from "../../src/mcp/create-server.js";
+import { createServer, SERVER_NAME } from "../../src/mcp/create-server.js";
 import type { JamDeps } from "../../src/deps.js";
 import { FakeJira, issue, testDeps } from "../helpers.js";
 
@@ -52,6 +52,30 @@ describe("tool contract", () => {
     for (const tool of tools) {
       expect(tool.description).toBeTruthy();
     }
+  });
+
+  it("identifies itself as jam, and serves exactly five tools", async () => {
+    // The count is the cheapest thing to check and the first thing to drift.
+    // Named separately from the name list above so a failure says which of the
+    // two went wrong: an added tool, or a renamed one.
+    expect(client.getServerVersion()?.name).toBe(SERVER_NAME);
+    const { tools } = await client.listTools();
+    expect(tools).toHaveLength(5);
+  });
+
+  it("gives jira_write_apply no input but a planId", async () => {
+    // This is the whole safety argument for splitting the write in two: with
+    // no payload on the apply step, there is nothing to override what the plan
+    // decided, and no way to write without planning first. An extra property
+    // here would quietly reopen that.
+    const { tools } = await client.listTools();
+    const schema = tools.find((t) => t.name === "jira_write_apply")?.inputSchema as {
+      properties?: Record<string, unknown>;
+      required?: string[];
+    };
+
+    expect(Object.keys(schema?.properties ?? {})).toEqual(["planId"]);
+    expect(schema?.required).toEqual(["planId"]);
   });
 
   it("marks the read tools read-only, and only the apply step as writing", async () => {

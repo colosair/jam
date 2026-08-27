@@ -88,7 +88,9 @@ describe("jam auth login", () => {
     const stream = captureStream();
     const ui = new Ui({ stream, input: fakeInput(), color: false, interactive: true });
 
-    const code = await authLoginCommand({ ui, store: undefined, readBack: () => port(none) });
+    // Empty env on purpose: the suite runs with JAM_DISABLE_SECRET_STORE set,
+    // and this case is about a system that has no store, not one switched off.
+    const code = await authLoginCommand({ ui, store: undefined, env: {}, readBack: () => port(none) });
 
     expect(code).toBe(1);
     expect(stream.text()).toMatch(/No usable secret store/);

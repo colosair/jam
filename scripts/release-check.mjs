@@ -127,6 +127,22 @@ if (!/tarball-smoke\.mjs/.test(rootScripts["smoke:packed"] ?? "")) {
   fail("package.json", '"smoke:packed" must run scripts/tarball-smoke.mjs');
 }
 
+// 7. One release gate, shared by a developer and by CI.
+//
+// `release:verify` is what both run, so dropping a step from it silently
+// narrows what CI proves. Static composition only - whether the steps pass is
+// the test suite's job, not this script's.
+const RELEASE_GATE_STEPS = ["build", "test", "release:check", "smoke"];
+const verify = rootScripts["release:verify"] ?? "";
+if (!verify) {
+  fail("package.json", 'no "release:verify" script - CI and the release procedure both run it');
+} else {
+  const missing = RELEASE_GATE_STEPS.filter((step) => !verify.includes(`npm run ${step}`));
+  if (missing.length > 0) {
+    fail("package.json", `"release:verify" no longer runs: ${missing.join(", ")}`);
+  }
+}
+
 if (problems.length === 0) {
   process.stdout.write(`Release ${version} is consistent across manifests, code and docs.\n`);
   process.exit(0);

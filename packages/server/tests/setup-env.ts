@@ -14,3 +14,24 @@ const sandbox = mkdtempSync(join(tmpdir(), "jam-test-home-"));
 
 process.env["HOME"] = sandbox;
 process.env["USERPROFILE"] = sandbox;
+
+/**
+ * Then make it credential-free, which repointing HOME does not do.
+ *
+ * Two of the three credential sources are per-user rather than per-HOME: the
+ * OS secret store, and on Windows the User environment in HKCU. A suite that
+ * only sandboxes HOME therefore passes or fails depending on whether the
+ * developer running it once ran `setx JIRA_API_TOKEN` or `jam auth login` -
+ * and "zero HOME" gets mistaken for "zero credentials". CI is credential-free
+ * for real; this makes a developer machine behave the same way.
+ *
+ * The integration suite is the one place that must reach real credentials, and
+ * it is opt-in through JAM_INTEGRATION, so it is exempt.
+ */
+if (!process.env["JAM_INTEGRATION"]) {
+  delete process.env["JIRA_BASE_URL"];
+  delete process.env["JIRA_EMAIL"];
+  delete process.env["JIRA_API_TOKEN"];
+  process.env["JAM_DISABLE_SECRET_STORE"] = "1";
+  process.env["JAM_DISABLE_USER_ENV"] = "1";
+}
