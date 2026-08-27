@@ -9,6 +9,10 @@
 # from whether a Jira instance is reachable, and mixing them makes a red build
 # ambiguous. Live `jam doctor` acceptance stays in the release procedure, run
 # by a human against a real site.
+#
+# The agent bootstrap end-to-end inside `smoke` is not an exception to that: it
+# drives the whole install-bind-register-verify path against an in-process mock
+# Jira on localhost, which needs no token and reaches no network.
 name: CI
 
 on:
