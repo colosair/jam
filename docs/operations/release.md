@@ -143,12 +143,17 @@ registry source from running elsewhere.
    OS
    Auto Mode enabled
    autoMode.classifyAllShell
-   settings source (which file, which rules)
+   permission scope (user-level / project) and rule shape (exact / wildcard)
    canonical command, verbatim
    classifier PASS / BLOCKED
    JAM process started yes/no
+   first observed JAM status code
    doctor result
+   actual Jira read PASS / FAIL
    ```
+
+   Redacted as described under [Recorded runs](#recorded-runs): status codes
+   and outcomes, never Jira keys, project lists, sites, or accounts.
 
    `autoMode.classifyAllShell` matters enough to record every time. With it
    set, a host suspends its Bash allow rules and sends every shell command to
@@ -175,6 +180,22 @@ commands in them are quoted verbatim, pinned to the version that was current
 at the time and wrapped exactly as the agent wrapped them - which is why the
 block is fenced off from `release-check`, whose job is to keep *instructions*
 current and unwrapped.
+
+**What a record may not contain.** Never a Jira project or space key or name,
+a visible project list, an issue key, a site URL, or anything identifying an
+account. An acceptance run is evidence about JAM and about a host, and none of
+those belong to either - the same rule the read benchmarks already work under
+(`docs/benchmarks/jira-read-v1/methodology.md`). Record the JAM status code,
+the shape of the command, what the host did, and whether Jira answered:
+
+```text
+doctor: ready
+actual Jira read: PASS
+```
+
+Not which issue it read, not from which project, not as whom. A run that
+cannot be described without naming one of those is a run that should be
+described more abstractly, not one that earns an exception.
 
 <!-- release-check: historical-evidence:start -->
 
@@ -226,11 +247,23 @@ Then the same command, unchanged:
 npx --yes @jam-mcp/bootstrap@1.3.1 setup --agent
 ```
 
-The host allowed it, JAM started, and the first thing it said was
-`JAM_PROJECT_SELECTION_REQUIRED` - a JAM human boundary, which is Gate B's
-business and no longer the host's. **A1 = pass**, measured against 1.3.1 before
-1.3.2 was published, so the contract this release documents was known to work
-before it was written down as the fallback.
+```text
+host                        Claude Code, Auto Mode
+permission scope            user-level
+permission type             exact Bash rule
+autoMode.classifyAllShell   unset / default
+canonical command           pure, unwrapped
+classifier                  PASS
+JAM process started         yes
+first observed JAM state    JAM_PROJECT_SELECTION_REQUIRED
+```
+
+The host allowed it, JAM started, and the first thing it said was a JAM human
+boundary - Gate B's business, no longer the host's. **A1 = pass**, measured
+against 1.3.1 before 1.3.2 was published, so the contract this release
+documents was known to work before it was written down as the fallback. It does
+not stand in for the release gate: A1 has to pass again against the published
+1.3.2 packages, with the rule pinned to that version, before there is a tag.
 
 Note what the exact rule had to match: the command with nothing around it. The
 refused invocation in the entry above carried `2>&1 | tail -60`, and no rule
