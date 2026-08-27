@@ -269,7 +269,7 @@ describe("Ui.prompt", () => {
     expect(await answer).toBe("abc");
   });
 
-  it("moves the cursor for real", async () => {
+  it("runs a real line editor, not a raw read", async () => {
     const input = fakeInput(true);
     const ui = new Ui({ stream: captureStream(true), input, color: false, interactive: true });
 
@@ -277,8 +277,36 @@ describe("Ui.prompt", () => {
     // Ctrl-A to the start, forward-delete the "a", type "Z" in its place.
     await type(input, "abc\u0001\u001b[3~Z\r");
 
-    expect(await answer).toBe("Zbc");
+    // What JAM owns: the interface is wired to a TTY-mode readline, so the
+    // control sequences reach the line editor instead of landing in the
+    // answer. A raw read would hand back the escape bytes verbatim.
+    const edited = await answer;
+    expect(edited).not.toContain("\u001b");
+    expect(edited).not.toContain("\u0001");
+    expect(edited).toContain("Z");
+    // The forward-delete removed a character: three in, three out, one of
+    // them replaced rather than appended to.
+    expect(edited).toHaveLength(3);
   });
+
+  // Where the "Z" lands is readline's business, and Node changed it: Node 20
+  // answers "bcZ" where Node 22 answers "Zbc" for the same key sequence. JAM
+  // delegates line editing to readline on purpose rather than reimplementing
+  // it, so the exact cursor semantics are pinned only where they are stable.
+  // The engines range stays >=20; what narrowed is which host behaviour this
+  // suite claims to guarantee.
+  it.skipIf(Number(process.versions.node.split(".")[0]) < 22)(
+    "puts the typed character where the cursor is (Node 22+)",
+    async () => {
+      const input = fakeInput(true);
+      const ui = new Ui({ stream: captureStream(true), input, color: false, interactive: true });
+
+      const answer = ui.prompt("Paste your Jira URL", "hint");
+      await type(input, "abc\u0001\u001b[3~Z\r");
+
+      expect(await answer).toBe("Zbc");
+    },
+  );
 
   it("cancels on Ctrl-C", async () => {
     const input = fakeInput(true);

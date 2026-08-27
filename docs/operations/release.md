@@ -27,6 +27,28 @@ The gate needs no Jira credentials and no network access to Jira. That is
 deliberate: it answers whether the source is correct, not whether a Jira site is
 reachable. Live acceptance is step 2 below, and it is a human's to run.
 
+### What CI covers, and what it does not
+
+`.github/workflows/ci.yml` runs `release:verify` on Ubuntu and Windows against
+Node 20 and 22. Two things it deliberately does not decide:
+
+- **Whether Jira is reachable.** No credentials are configured, and none are
+  needed. A red build should mean the source is wrong, not that Atlassian is
+  having an afternoon.
+- **Host behaviour JAM delegates rather than implements.** Line editing in
+  `jam auth login` is Node's `readline`, and Node changed it: given
+  Ctrl-A, forward-delete, then a keystroke, Node 20 answers `bcZ` where Node 22
+  answers `Zbc`. JAM's supported range stays `>=20`, and the suite still checks
+  on every version what JAM owns - that the prompt runs a real line editor, so
+  control sequences edit the buffer instead of ending up in the answer. The
+  exact cursor placement is pinned only from Node 22, where it is stable. See
+  `tests/unit/ui.test.ts`.
+
+Test counts differ by platform, and that is expected: two Windows-only tests
+cover the User environment credential source and case-insensitive path
+handling, and one non-Windows test covers the platform check that keeps the
+registry source from running elsewhere.
+
 ## Procedure
 
 1. **`npm run release:verify`** — on at least one machine, and on both platforms
