@@ -118,6 +118,23 @@ export class JiraCloudWriteAdapter implements JiraWritePort {
       }));
   }
 
+  /**
+   * `PUT /rest/api/3/issue/{key}/assignee` with an accountId.
+   *
+   * The dedicated assignment endpoint rather than a field update: assignment
+   * has its own permission and its own Jira semantics, and routing it through
+   * the generic field PUT would put it behind the field whitelist, where it
+   * does not belong.
+   */
+  async assignIssue(key: string, accountId: string): Promise<void> {
+    await this.client.request<void>({
+      path: `rest/api/3/issue/${encodeURIComponent(key)}/assignee`,
+      method: "PUT",
+      body: { accountId },
+      retry: false,
+    });
+  }
+
   async transitionIssue(key: string, transitionId: string): Promise<void> {
     await this.client.request<void>({
       path: `rest/api/3/issue/${encodeURIComponent(key)}/transitions`,

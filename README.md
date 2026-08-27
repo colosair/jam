@@ -72,14 +72,25 @@ agent could smuggle a change JAM has not looked at. What "Done" means is settled
 during planning — JAM asks Jira which transitions this issue actually offers and
 resolves the id, rather than guessing one from a status name.
 
-Four operations, and a fixed field whitelist:
+Five operations, and a fixed field whitelist:
 
 ```text
 comment.add        { "text": "..." }         plain text; JAM converts it, ADF is not accepted
 field.update       summary, priority, labels, components
 status.transition  { "status": "Done" }      matched against Jira's available transitions
+assignee.update    { "assignee": "..." }     resolved against Jira's user directory
 issue.create       issueType, summary + description, priority, labels, components
 ```
+
+`assignee.update` never sends the name you pass. Jira's user search is a
+substring match, so JAM treats what comes back as candidates and assigns only
+when exactly one matches exactly — an exact display name, case aside, or an
+accountId. Anything less comes back as a refusal with the candidates attached,
+because picking one of several people is somebody's issue assigned to the wrong
+colleague. JAM also asks Jira whether that person may hold this issue, before
+planning and again before writing, and confirms the result on the accountId
+rather than on the display name — two people can share a name. Unassigning and
+assigning at creation are not in this version.
 
 `issue.create` takes no `key` — there is no issue yet — and no project either:
 the new issue goes into the project this workspace is bound to. Planning reads

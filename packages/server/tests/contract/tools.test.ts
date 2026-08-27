@@ -94,7 +94,7 @@ describe("tool contract", () => {
     expect(byName["jira_write_apply"]?.idempotentHint).toBe(false);
   });
 
-  it("carries issue.create as an operation, not as a sixth tool", async () => {
+  it("carries every write as an operation, never as another tool", async () => {
     // The whole point of the plan/apply shape is that adding what JAM can
     // write does not widen what an agent has to know. A new operation belongs
     // in the enum; a new tool would be a breaking change to the contract.
@@ -108,6 +108,7 @@ describe("tool contract", () => {
       "comment.add",
       "field.update",
       "status.transition",
+      "assignee.update",
       "issue.create",
     ]);
     // `key` is not required, because issue.create has no issue to name. The

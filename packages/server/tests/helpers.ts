@@ -19,7 +19,9 @@ import type {
 import type { TelemetryPort, ToolMetrics } from "../src/ports/telemetry.port.js";
 import type { JiraWritePort } from "../src/ports/jira-write.port.js";
 import type { JiraCreateMetadataPort } from "../src/ports/jira-create-metadata.port.js";
+import type { JiraAssigneeResolutionPort } from "../src/ports/jira-assignee-resolution.port.js";
 import type {
+  AssigneeCandidate,
   CreateFieldMetadata,
   CreateIssueType,
   JiraTransition,
@@ -83,6 +85,11 @@ export type FakeJiraOptions = {
   commentTotals?: Record<string, number>;
   commentPages?: Record<string, GetCommentsResult[]>;
   projects?: ListProjectsResult;
+  /**
+   * Assignee identity per issue key. `issue.assignee` is a display name and
+   * cannot carry one, and the write plane verifies on identity.
+   */
+  assigneeAccountIds?: Record<string, string>;
 };
 
 /** In-memory JiraReadPort so pagination and completeness can be tested exactly. */
@@ -102,6 +109,24 @@ export class FakeJira implements JiraReadPort {
 
   constructor(private readonly options: FakeJiraOptions = {}) {}
 
+  /** Move an issue's revision, the way another writer would. */
+  setUpdated(key: string, updated: string): void {
+    const found = (this.options.issues ?? []).find((i) => i.key === key);
+    if (found) found.updated = updated;
+  }
+
+  /** What the next direct read reports as this issue's assignee. */
+  setAssignee(key: string, accountId: string | undefined, displayName?: string): void {
+    this.options.assigneeAccountIds ??= {};
+    if (accountId) this.options.assigneeAccountIds[key] = accountId;
+    else delete this.options.assigneeAccountIds[key];
+    const found = (this.options.issues ?? []).find((i) => i.key === key);
+    if (found) {
+      if (displayName) found.assignee = displayName;
+      else delete found.assignee;
+    }
+  }
+
   async searchPage(req: SearchPageRequest): Promise<SearchPageResult> {
     this.searchCalls.push(req);
     const pages = this.options.pages ?? [];
@@ -115,7 +140,12 @@ export class FakeJira implements JiraReadPort {
       (i) => i.key.toUpperCase() === req.key.toUpperCase(),
     );
     if (!found) return { responseBytes: 0 };
-    return { issue: { ...found, comments: [...found.comments] }, responseBytes: 50 };
+    const accountId = this.options.assigneeAccountIds?.[found.key];
+    return {
+      issue: { ...found, comments: [...found.comments] },
+      ...(accountId ? { assigneeAccountId: accountId } : {}),
+      responseBytes: 50,
+    };
   }
 
   async getIssues(req: GetIssuesRequest): Promise<GetIssuesResult> {
@@ -154,12 +184,14 @@ export function testDeps(
   jiraWrite: JiraWritePort = new UnreachableJiraWrite(),
   writePlans: WritePlanStore = new WritePlanStore(),
   jiraCreateMetadata: JiraCreateMetadataPort = new UnreachableCreateMetadata(),
+  jiraAssignees: JiraAssigneeResolutionPort = new UnreachableAssignees(),
 ): JamDeps {
   return {
     config,
     jira,
     jiraWrite,
     jiraCreateMetadata,
+    jiraAssignees,
     writePlans,
     cache: new NoopCache(),
     telemetry: new RecordingTelemetry(),
@@ -175,6 +207,9 @@ export function testDeps(
  */
 export class UnreachableJiraWrite implements JiraWritePort {
   async createIssue(): Promise<{ id: string; key: string }> {
+    throw new Error("test reached the write port unexpectedly");
+  }
+  async assignIssue(): Promise<void> {
     throw new Error("test reached the write port unexpectedly");
   }
   async updateIssue(): Promise<void> {
@@ -203,6 +238,9 @@ export class FakeJiraWrite implements JiraWritePort {
   readonly comments: { key: string; body: string }[] = [];
   readonly transitionCalls: { key: string; transitionId: string }[] = [];
   readonly creates: Record<string, unknown>[] = [];
+  readonly assignments: { key: string; accountId: string }[] = [];
+  /** Entered assignIssue calls, failures included - see createCalls. */
+  assignCalls = 0;
   /**
    * How many times createIssue was entered, including calls that then failed.
    * `creates` records only the ones that got as far as Jira accepting them, so
@@ -256,10 +294,20 @@ export class FakeJiraWrite implements JiraWritePort {
     this.transitionCalls.push({ key, transitionId });
   }
 
+  async assignIssue(key: string, accountId: string): Promise<void> {
+    this.assignCalls += 1;
+    this.throwIfArmed();
+    this.assignments.push({ key, accountId });
+  }
+
   /** Every mutating call, in order - used to prove nothing was retried. */
   get mutations(): number {
     return (
-      this.updates.length + this.comments.length + this.transitionCalls.length + this.creates.length
+      this.updates.length +
+      this.comments.length +
+      this.transitionCalls.length +
+      this.creates.length +
+      this.assignments.length
     );
   }
 }
@@ -330,6 +378,63 @@ export class FakeCreateMetadata implements JiraCreateMetadataPort {
   async getCreateFields(projectKey: string, issueTypeId: string): Promise<CreateFieldMetadata[]> {
     this.fieldCalls.push({ projectKey, issueTypeId });
     return this.fields;
+  }
+}
+
+/**
+ * The default resolution port, for tests that are not about assigning.
+ *
+ * Throws rather than answering nothing: a test that reaches the user directory
+ * without meaning to should say so.
+ */
+export class UnreachableAssignees implements JiraAssigneeResolutionPort {
+  async searchUsers(): Promise<AssigneeCandidate[]> {
+    throw new Error("test reached the assignee resolution port unexpectedly");
+  }
+  async isAssignable(): Promise<boolean> {
+    throw new Error("test reached the assignee resolution port unexpectedly");
+  }
+}
+
+/**
+ * A user directory served from a fixture, and a record of what was asked.
+ *
+ * `assignable` is a mutable set of accountIds, so a test can revoke a
+ * permission between plan and apply - which is the whole of the apply-time
+ * recheck, and cannot be told with a frozen fixture.
+ *
+ * The search is a substring match because Jira's is. A fake that only ever
+ * returned exact matches would make the ambiguity rules untestable, which is
+ * where the interesting behaviour lives.
+ */
+export class FakeAssignees implements JiraAssigneeResolutionPort {
+  users: AssigneeCandidate[];
+  assignable: Set<string>;
+  readonly searches: string[] = [];
+  readonly assignableChecks: { issueKey: string; accountId: string }[] = [];
+
+  constructor(options: { users?: AssigneeCandidate[]; assignable?: string[] } = {}) {
+    this.users = options.users ?? [
+      { accountId: "acc-min-kim", displayName: "Min Kim", active: true },
+      { accountId: "acc-minho-park", displayName: "Minho Park", active: true },
+      { accountId: "acc-gone", displayName: "Departed Person", active: false },
+    ];
+    this.assignable = new Set(
+      options.assignable ?? this.users.filter((u) => u.active).map((u) => u.accountId),
+    );
+  }
+
+  async searchUsers(query: string): Promise<AssigneeCandidate[]> {
+    this.searches.push(query);
+    const q = query.trim().toLowerCase();
+    return this.users.filter(
+      (u) => u.displayName.toLowerCase().includes(q) || u.accountId === query.trim(),
+    );
+  }
+
+  async isAssignable(issueKey: string, accountId: string): Promise<boolean> {
+    this.assignableChecks.push({ issueKey, accountId });
+    return this.assignable.has(accountId);
   }
 }
 

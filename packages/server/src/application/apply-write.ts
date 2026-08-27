@@ -3,6 +3,7 @@ import type { FullIssueContext } from "../domain/context.js";
 import { JamError, toJamError } from "../domain/errors.js";
 import type { ExistingIssueWritePlan, WriteApplyReceipt } from "../domain/write.js";
 import { readModeAfterWrite } from "../policy/consistency-policy.js";
+import { assertAssignable } from "../policy/assignee-policy.js";
 import { assertUnchanged } from "../policy/write-policy.js";
 import { applyCreateIssue } from "./apply-create-issue.js";
 import { readIssue } from "./plan-write.js";
@@ -46,7 +47,13 @@ export async function applyWritePlan(
   if (plan.kind === "create-issue") return applyCreateIssue(deps, plan);
 
   const current = await readIssue(deps, plan.issueKey);
-  assertUnchanged(plan.issueKey, plan.baseUpdated, current.updated);
+  assertUnchanged(plan.issueKey, plan.baseUpdated, current.issue.updated);
+
+  // Whatever the plan depends on that the revision check cannot see, checked
+  // again here. For an assignment that is the target's permission to hold this
+  // issue: it can be revoked between planning and applying, and a plan that
+  // was valid is not the same as a plan that is still valid.
+  await revalidate(deps, plan);
 
   const outcome = await mutate(deps, plan);
 
@@ -63,6 +70,23 @@ export async function applyWritePlan(
     verified: true,
     ...(outcome.commentId ? { commentId: outcome.commentId } : {}),
   };
+}
+
+/**
+ * Re-derive the premises the revision check does not cover.
+ *
+ * Only `assignee.update` has any: the rest are fully described by the issue's
+ * own state, which `assertUnchanged` already compared.
+ */
+async function revalidate(deps: JamDeps, plan: ExistingIssueWritePlan): Promise<void> {
+  if (plan.mutation.kind !== "assignee") return;
+
+  const target = plan.intendedAfter["assignee"] as { accountId: string; displayName: string };
+  assertAssignable(
+    plan.issueKey,
+    target,
+    await deps.jiraAssignees.isAssignable(plan.issueKey, plan.mutation.accountId),
+  );
 }
 
 /**
@@ -86,6 +110,9 @@ async function mutate(deps: JamDeps, plan: ExistingIssueWritePlan): Promise<{ co
         return {};
       case "transition":
         await deps.jiraWrite.transitionIssue(plan.issueKey, plan.mutation.transitionId);
+        return {};
+      case "assignee":
+        await deps.jiraWrite.assignIssue(plan.issueKey, plan.mutation.accountId);
         return {};
       case "create":
         // Unreachable: a create plan is routed to applyCreateIssue above. The
@@ -126,7 +153,24 @@ function isAmbiguous(err: JamError): boolean {
  * ours.
  */
 async function verify(deps: JamDeps, plan: ExistingIssueWritePlan): Promise<Record<string, unknown>> {
-  const issue = await readIssue(deps, plan.issueKey);
+  const snapshot = await readIssue(deps, plan.issueKey);
+  const issue = snapshot.issue;
+
+  if (plan.mutation.kind === "assignee") {
+    // On the accountId, never on the display name. Two people can share a
+    // name, so a name comparison would accept the wrong person's assignment as
+    // proof of the right one's - which is the entire reason resolution went to
+    // the trouble of producing an identity.
+    const expected = plan.intendedAfter["assignee"] as { accountId: string; displayName: string };
+    const observed = snapshot.assigneeAccountId
+      ? { accountId: snapshot.assigneeAccountId, displayName: issue.assignee ?? "" }
+      : null;
+
+    if (snapshot.assigneeAccountId !== expected.accountId) {
+      throw verificationFailed(plan, { assignee: expected }, { assignee: observed });
+    }
+    return { assignee: { accountId: expected.accountId, displayName: issue.assignee ?? expected.displayName } };
+  }
 
   if (plan.mutation.kind === "comment") {
     // Direct issue GET again, not the bulk endpoint: this is post-write
