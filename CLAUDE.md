@@ -121,15 +121,15 @@ If asked to set JAM up somewhere, use the official setup path — do not work ou
 an installation procedure from the README. One command does the whole thing:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.1.0 setup --agent
+npx --yes @jam-mcp/bootstrap@1.2.0 setup --agent
 ```
 
 To inspect before acting, the same three steps separately:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.1.0 setup plan --json                     # what would change; changes nothing
-npx --yes @jam-mcp/bootstrap@1.1.0 setup apply --non-interactive --json  # execute it
-npx --yes @jam-mcp/bootstrap@1.1.0 doctor --json                         # verify
+npx --yes @jam-mcp/bootstrap@1.2.0 setup plan --json                     # what would change; changes nothing
+npx --yes @jam-mcp/bootstrap@1.2.0 setup apply --non-interactive --json  # execute it
+npx --yes @jam-mcp/bootstrap@1.2.0 doctor --json                         # verify
 ```
 
 Run them through `npx` exactly as written. A bare `jam` is a convenience some
@@ -156,7 +156,7 @@ MCP config file, or pass `--shared` without being asked to.
 
 Stop only for `JAM_PROJECT_SELECTION_REQUIRED` (ask which Jira project) and
 `JAM_AUTH_REQUIRED` (tell the user to authenticate themselves). Finish with
-`npx --yes @jam-mcp/bootstrap@1.1.0 doctor --json`.
+`npx --yes @jam-mcp/bootstrap@1.2.0 doctor --json`.
 
 Authentication is the one step that is not yours to do. Never ask for an API
 token, never accept one that is offered, never store one, and never run the

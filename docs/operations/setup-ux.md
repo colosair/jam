@@ -194,7 +194,7 @@ probe blocks the process, so a spinner would print one frame and then freeze —
 it gets a pending line instead, and only when a probe actually happens:
 
 ```text
-○ Checking @jam-mcp/launcher@1.1.0 on npm...
+○ Checking @jam-mcp/launcher@1.2.0 on npm...
 ```
 
 Disabled entirely when not interactive, where it degrades to a single pending
@@ -235,7 +235,7 @@ shell history:
 ```text
 × Migration target is not available from the configured npm registry
 
-  npm could not find @jam-mcp/launcher@1.1.0 in the configured registry.
+  npm could not find @jam-mcp/launcher@1.2.0 in the configured registry.
   Existing .mcp.json was left unchanged.
 ```
 
@@ -283,7 +283,7 @@ adoption is asked for.
   Recorded for you only - the repository was not touched.
 ✓ Registered with            claude-code
 ! codex was not reachable, so JAM was not registered with it.
-› If you use it, run: codex mcp add jam -- npx --yes @jam-mcp/launcher@1.1.0 serve
+› If you use it, run: codex mcp add jam -- npx --yes @jam-mcp/launcher@1.2.0 serve
 ```
 
 **A rebind names what it replaces.** `jam setup --project OTHER` on a workspace
