@@ -87,6 +87,64 @@ describe("resolving who was meant", () => {
     expect(ctx.write.mutations).toBe(0);
   });
 
+  it("resolves an accountId through the exact lookup when the search misses it", async () => {
+    // Jira's user search happens to match an accountId today. That is a
+    // property of a substring search, not a promise - and the contract says an
+    // accountId identifies a person, so it cannot rest on the coincidence.
+    ctx.assignees.searchMatchesAccountId = false;
+
+    const { receipt } = await plan(ctx, MIN);
+
+    expect(receipt.intendedAfter).toMatchObject({ assignee: { accountId: MIN } });
+    expect(ctx.assignees.lookups).toEqual([MIN]);
+  });
+
+  it("does not spend a lookup when the search already settled it", async () => {
+    await plan(ctx, "Min Kim");
+
+    expect(ctx.assignees.lookups).toHaveLength(0);
+  });
+
+  it("refuses an accountId that no lookup finds either", async () => {
+    ctx.assignees.searchMatchesAccountId = false;
+
+    await expect(plan(ctx, "acc-nobody")).rejects.toMatchObject({
+      code: "JAM_WRITE_ASSIGNEE_NOT_FOUND",
+    });
+    expect(ctx.assignees.lookups).toEqual(["acc-nobody"]);
+    expect(ctx.write.mutations).toBe(0);
+  });
+
+  it("refuses a deactivated account found by accountId", async () => {
+    ctx.assignees.searchMatchesAccountId = false;
+
+    await expect(plan(ctx, "acc-gone")).rejects.toMatchObject({
+      code: "JAM_WRITE_ASSIGNEE_NOT_ASSIGNABLE",
+      details: { reason: "INACTIVE" },
+    });
+  });
+
+  it("still checks assignability for an account named by id", async () => {
+    ctx.assignees.searchMatchesAccountId = false;
+    ctx.assignees.assignable = new Set(["acc-minho-park"]);
+
+    await expect(plan(ctx, MIN)).rejects.toMatchObject({
+      code: "JAM_WRITE_ASSIGNEE_NOT_ASSIGNABLE",
+      details: { accountId: MIN },
+    });
+    expect(ctx.write.mutations).toBe(0);
+  });
+
+  it("does not let a display name reach the lookup as though it were an id", async () => {
+    // The string is never inspected to guess its shape. A name that resolves
+    // never reaches the lookup at all, and one that does not resolve is asked
+    // about honestly rather than assumed to be something it is not.
+    await expect(plan(ctx, "Min")).rejects.toMatchObject({
+      code: "JAM_WRITE_ASSIGNEE_NOT_FOUND",
+    });
+    expect(ctx.assignees.lookups).toEqual(["Min"]);
+  });
+
   it("refuses when nothing matches, and says so plainly", async () => {
     await expect(plan(ctx, "Nobody At All")).rejects.toMatchObject({
       code: "JAM_WRITE_ASSIGNEE_NOT_FOUND",

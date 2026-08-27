@@ -44,12 +44,7 @@ export function resolveAssignee(
     );
   }
 
-  const byAccountId = candidates.filter((c) => c.accountId === wanted);
-  const byName = candidates.filter(
-    (c) => c.displayName.trim().toLowerCase() === wanted.toLowerCase(),
-  );
-
-  const exact = byAccountId.length > 0 ? byAccountId : byName;
+  const exact = exactMatches(wanted, candidates);
 
   if (exact.length === 0) {
     throw new JamError(
@@ -120,6 +115,27 @@ export function assertNotAlreadyAssigned(
     `${issueKey} is already assigned to ${target.displayName}. Nothing to change.`,
     { issueKey, accountId: target.accountId, displayName: target.displayName },
   );
+}
+
+/**
+ * The candidates this string identifies exactly, if any.
+ *
+ * Exported so the caller can tell "the search settled it" from "the search did
+ * not" without reimplementing the rule - a second copy of what counts as exact
+ * is a second answer waiting to disagree with this one.
+ *
+ * An accountId match wins outright: it is an identity, and a display name that
+ * happens to equal somebody's account id is not a reason to consider them.
+ */
+export function exactMatches(
+  requested: string,
+  candidates: AssigneeCandidate[],
+): AssigneeCandidate[] {
+  const wanted = requested.trim();
+  const byAccountId = candidates.filter((c) => c.accountId === wanted);
+  if (byAccountId.length > 0) return byAccountId;
+
+  return candidates.filter((c) => c.displayName.trim().toLowerCase() === wanted.toLowerCase());
 }
 
 /** Candidates as an agent can act on them: a name to repeat, and an id to be sure. */

@@ -1,4 +1,5 @@
 import type { AssigneeCandidate } from "../../domain/write.js";
+import { JamError } from "../../domain/errors.js";
 import type { CredentialPort } from "../../ports/credentials.port.js";
 import type { JiraAssigneeResolutionPort } from "../../ports/jira-assignee-resolution.port.js";
 import { JiraClient } from "./jira-client.js";
@@ -49,6 +50,28 @@ export class JiraCloudAssigneeResolutionAdapter implements JiraAssigneeResolutio
     });
 
     return toCandidates(data);
+  }
+
+  /**
+   * `GET /rest/api/3/user?accountId=` - the exact lookup, not a search.
+   *
+   * Jira answers 404 when no such account exists or this token cannot see it.
+   * Both mean the same thing to a caller who wanted to assign it, so both
+   * become `undefined` rather than an error: "there is nobody to assign" is an
+   * answer, and the policy layer is where it turns into a refusal.
+   */
+  async getUserByAccountId(accountId: string): Promise<AssigneeCandidate | undefined> {
+    try {
+      const { data } = await this.client.request<RawUser>({
+        path: "rest/api/3/user",
+        query: { accountId },
+        retry: false,
+      });
+      return toCandidates([data])[0];
+    } catch (err) {
+      if (err instanceof JamError && err.code === "ISSUE_NOT_FOUND") return undefined;
+      throw err;
+    }
   }
 
   async isAssignable(issueKey: string, accountId: string): Promise<boolean> {

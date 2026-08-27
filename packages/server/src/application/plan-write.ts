@@ -2,6 +2,7 @@ import type { JamDeps } from "../deps.js";
 import type { FullIssueContext } from "../domain/context.js";
 import { JamError } from "../domain/errors.js";
 import type {
+  AssigneeCandidate,
   AssigneeUpdateInput,
   CommentAddInput,
   ExistingIssueOperation,
@@ -24,6 +25,7 @@ import {
 import {
   assertAssignable,
   assertNotAlreadyAssigned,
+  exactMatches,
   resolveAssignee,
 } from "../policy/assignee-policy.js";
 import { planCreateIssue } from "./plan-create-issue.js";
@@ -291,8 +293,7 @@ async function describe(
       // string never reaches a mutation: what gets written is the accountId
       // that resolution settled on, and resolution refuses rather than picks
       // when the answer is not one person.
-      const candidates = await deps.jiraAssignees.searchUsers(requested);
-      const target = resolveAssignee(requested, candidates);
+      const target = resolveAssignee(requested, await findCandidates(deps, requested));
 
       // Two independent refusals, in the order that costs least. Already-set
       // needs no Jira call; assignability does.
@@ -317,6 +318,29 @@ async function describe(
       };
     }
   }
+}
+
+/**
+ * Who Jira thinks this string could be.
+ *
+ * The search first, because it answers both halves of the contract most of the
+ * time - Jira's user search currently matches an accountId as readily as a
+ * name. "Currently" is the problem: that is a property of a substring search
+ * rather than a promise, and the contract says an accountId identifies a
+ * person. So when the search settles nothing, the exact lookup is asked before
+ * giving up.
+ *
+ * Ordered this way because it costs nothing on the paths that work. The extra
+ * request happens only where resolution was about to fail anyway, and the
+ * string is never inspected to guess whether it looks like an accountId - Jira
+ * is asked, and Jira answers.
+ */
+async function findCandidates(deps: JamDeps, requested: string): Promise<AssigneeCandidate[]> {
+  const candidates = await deps.jiraAssignees.searchUsers(requested);
+  if (exactMatches(requested, candidates).length > 0) return candidates;
+
+  const byId = await deps.jiraAssignees.getUserByAccountId(requested);
+  return byId ? [byId] : candidates;
 }
 
 function currentValue(issue: FullIssueContext, field: string): unknown {
