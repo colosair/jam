@@ -100,7 +100,7 @@ If asked to set JAM up somewhere, use the official setup path — do not work ou
 an installation procedure from the README. One command does the whole thing:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.3.1 setup --agent
+npx --yes @jam-mcp/bootstrap@1.3.2 setup --agent
 ```
 
 **If you are reading this inside a clone of the JAM repository** — because
@@ -123,9 +123,9 @@ JAM being READY. READY means `doctor --json` reports `ready`.
 To inspect before acting, the same three steps separately:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.3.1 setup plan --json                     # what would change; changes nothing
-npx --yes @jam-mcp/bootstrap@1.3.1 setup apply --non-interactive --json  # execute it
-npx --yes @jam-mcp/bootstrap@1.3.1 doctor --json                         # verify
+npx --yes @jam-mcp/bootstrap@1.3.2 setup plan --json                     # what would change; changes nothing
+npx --yes @jam-mcp/bootstrap@1.3.2 setup apply --non-interactive --json  # execute it
+npx --yes @jam-mcp/bootstrap@1.3.2 doctor --json                         # verify
 ```
 
 Run them through `npx` exactly as written. A bare `jam` is a convenience some
@@ -134,6 +134,15 @@ for it before a runtime is configured — bootstrap is the only entry point that
 needs neither. This holds for what JAM hands back too: a plan's
 `nextAction.command` is already an `npx` invocation, so run it as given rather
 than shortening it.
+
+Run it exactly as written, as one command. No `cd` in front of it, no pipe, no
+redirection, no `&&`, no environment prefix, and no other package runner
+swapped in. Change directory through whatever the host gives you for that
+before you run anything - the command line itself carries no path. This is not
+style: a host matches permission rules against the whole command, and a pipe
+makes it a compound one, so `npx ... setup --agent 2>&1 | tail -60` matches no
+rule written for `npx ... setup --agent`. A wrapper takes away the one thing
+that could have let it through.
 
 These are personal by default: they record the binding in the user's
 `~/.jam/projects.yaml` and register JAM with this machine's coding agents,
@@ -150,8 +159,14 @@ guess a Jira project key, overwrite unrelated `.mcp.json` entries, assemble
 `project.yaml` / `.mcp.json` / `~/.jam/projects.yaml` by hand, edit a host's own
 MCP config file, or pass `--shared` without being asked to.
 
-Three kinds of outcome, and only the first is a question for a person:
+Four kinds of outcome, and only two of them are a question for a person:
 
+- **Host boundary — the command never ran.** The host refused before JAM
+  started: no JAM JSON, nothing on stdout, an explicit refusal from the host
+  itself. This is not a JAM failure and there is no JAM code for it, because
+  JAM was not running to emit one. **Do not rewrite the command to get around
+  it.** Report the boundary, show the exact command, and ask the user to
+  authorize that one command. Then run the same command again, unchanged.
 - **Human boundary — stop and hand it over.**
   `JAM_PROJECT_SELECTION_REQUIRED`: show `projects[]` and ask which Jira
   project. `JAM_AUTH_REQUIRED`: relay `nextAction.userCommand` and the variable
@@ -163,7 +178,33 @@ Three kinds of outcome, and only the first is a question for a person:
   `JAM_MIGRATION_TARGET_UNAVAILABLE`, and a `verification_failed` status all
   describe a state a rerun will not change. Say what it says.
 
-Finish with `npx --yes @jam-mcp/bootstrap@1.3.1 doctor --json`.
+What to ask for at a host boundary, and nothing wider: one rule for the exact
+command, in the user's own settings rather than the repository's. For Claude
+Code that is `~/.claude/settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx --yes @jam-mcp/bootstrap@1.3.2 setup --agent)",
+      "Bash(npx --yes @jam-mcp/bootstrap@1.3.2 runtime use package)"
+    ]
+  }
+}
+```
+
+The second line is there because `JAM_RUNTIME_CONFIG_MISSING` hands back a
+command to run, and a host can refuse that one too.
+
+Never ask for `Bash(npx:*)`, `Bash(npm:*)`, `Bash(*)`, or any rule broader than
+the command that was refused - a rule that admits every package runner is not a
+smaller ask than the one command, it is a much larger one. Never write the rule
+yourself, never put it in the repository so the project approves its own
+tooling, and never reach for a shell variant, a wrapper script, or a different
+runner to get past a refusal. If the user declines, that is an answer: say what
+cannot be done without it.
+
+Finish with `npx --yes @jam-mcp/bootstrap@1.3.2 doctor --json`.
 
 Authentication is the one step that is not yours to do. `JAM_AUTH_REQUIRED`
 carries no `command` for exactly that reason — what it carries is a

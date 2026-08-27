@@ -10,7 +10,7 @@
  * default that the project's own pin overrides, not a value that disappears.
  */
 export const SERVER_PACKAGE = "@jam-mcp/server";
-export const SERVER_VERSION = "1.3.1";
+export const SERVER_VERSION = "1.3.2";
 export const SERVER_PACKAGE_SPEC = `${SERVER_PACKAGE}@${SERVER_VERSION}`;
 
 export const LAUNCHER_PACKAGE = "@jam-mcp/launcher";

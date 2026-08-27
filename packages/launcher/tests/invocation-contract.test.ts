@@ -90,6 +90,25 @@ describe("commands JAM hands to a machine", () => {
     }
   });
 
+  it("carry no shell around them", () => {
+    // A host matches a permission rule against the whole command, and a pipe or
+    // a redirection makes it a compound one - so a command JAM hands back
+    // wrapped in shell would match no rule written for the command itself, and
+    // the narrow permission that is JAM's documented fallback would not apply
+    // to it. Measured in 2026-08: a wrapped bootstrap invocation was refused by
+    // a host, and an exact rule for it could not have helped.
+    for (const command of [
+      portableBootstrapCommand("setup --agent"),
+      portableBootstrapCommand("runtime use package"),
+      BOOTSTRAP_INIT_COMMAND,
+    ]) {
+      expect(command).not.toMatch(/[|&;><]/);
+      expect(command).not.toMatch(/^[A-Za-z_][A-Za-z0-9_]*=/);
+      expect(command).not.toMatch(/(^|\s)cd\s/);
+      expect(command).toMatch(/^npx --yes @jam-mcp\/bootstrap@\d+\.\d+\.\d+ \S/);
+    }
+  });
+
   it("route a missing runtime config through bootstrap, which needs no runtime config", () => {
     expect(BOOTSTRAP_INIT_COMMAND).toBe(`npx --yes @jam-mcp/bootstrap@${SERVER_VERSION} init`);
   });

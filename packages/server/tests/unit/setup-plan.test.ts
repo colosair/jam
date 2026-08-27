@@ -653,6 +653,15 @@ describe("nextAction is executable on a machine with nothing installed", () => {
         if (command === undefined) continue;
         expect(command.startsWith("jam ")).toBe(false);
         expect(command).toMatch(/^npx --yes @jam-mcp\/\S+@\d+\.\d+\.\d+ /);
+        // And nothing wrapped around it. A host matches a permission rule
+        // against the whole command line, so a pipe or a redirection makes it
+        // compound and the narrow rule a user was asked to add stops matching
+        // it. The start anchor above would let a trailing `| tee` through.
+        //
+        // `<KEY>` is the one pair of angle brackets that belongs: the project
+        // selection command is a template the caller fills in, not a
+        // redirection, so it comes out before the shell characters are counted.
+        expect(command.replace(/<[A-Z_]+>/g, "KEY")).not.toMatch(/[|&;><]/);
       }
     }
   });

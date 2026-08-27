@@ -92,9 +92,25 @@ const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: repoRoot, encodin
   .filter((path) => /\.(md|ps1|sh|json|yaml|yml|example)$/.test(path))
   .filter((path) => !path.startsWith("packages/") || !path.includes("/dist/"));
 
+/**
+ * Strip the blocks a document marks as recorded evidence.
+ *
+ * `docs/operations/release.md` quotes commands a host actually refused, at the
+ * version that was current when it refused them and wrapped the way the agent
+ * wrapped them. Those are transcripts, not instructions - re-pinning them to
+ * the current release would falsify the record, and the checks below exist to
+ * keep instructions true.
+ */
+function withoutEvidence(text) {
+  return text.replace(
+    /<!-- release-check: historical-evidence:start -->[\s\S]*?<!-- release-check: historical-evidence:end -->/g,
+    "",
+  );
+}
+
 for (const path of tracked) {
   if (path.endsWith("package-lock.json")) continue;
-  const text = read(path);
+  const text = withoutEvidence(read(path));
   for (const [spec, , pinned] of text.matchAll(SPEC)) {
     if (pinned === version) continue;
     // `<exact>`, `<version>` and friends are deliberately generic - prose that
@@ -141,6 +157,59 @@ if (!verify) {
   if (missing.length > 0) {
     fail("package.json", `"release:verify" no longer runs: ${missing.join(", ")}`);
   }
+}
+
+// 8. The one command an agent is told to run, unwrapped.
+//
+// A host matches a permission rule against the whole command, and a pipe makes
+// it a compound one - so `... setup --agent 2>&1 | tail -60` matches no rule
+// written for `... setup --agent`. An agent that copies a wrapped example from
+// these files loses the fallback before it ever needs it. In 2026-08 one did
+// exactly that; the wrapper was not why the host refused, but it would have
+// made the documented fix unusable.
+const AGENT_DOCS = ["README.md", "AGENTS.md", "CLAUDE.md"];
+const CANONICAL = `npx --yes @jam-mcp/bootstrap@${version} setup --agent`;
+
+for (const path of AGENT_DOCS) {
+  const lines = withoutEvidence(read(path)).split("\n");
+  const mentions = lines.filter((line) => line.includes("setup --agent"));
+  if (!mentions.some((line) => line.trim() === CANONICAL)) {
+    fail(path, `no line reads exactly \`${CANONICAL}\` - the canonical command has drifted`);
+  }
+  for (const line of mentions) {
+    // Prose may name a wrapped command to forbid it; a fenced command line is
+    // an instruction, and instructions carry no shell around them.
+    if (!line.startsWith("npx ")) continue;
+    const wrapper = /[|>&;]|(^|\s)cd\s/.exec(line);
+    if (wrapper) fail(path, `canonical command is wrapped in shell (\`${wrapper[0].trim()}\`): ${line.trim()}`);
+  }
+}
+
+// 9. AGENTS.md and CLAUDE.md say the same thing about installing JAM.
+//
+// The two files are one document with two names, and hosts read one or the
+// other - so a rule added to one and not the other is a rule half the agents
+// never see. That has happened: the operation count sat at "three" in AGENTS.md
+// for two releases while CLAUDE.md said five.
+//
+// This pins the mirror, and nothing else. Whether either file agrees with the
+// code is a different question and not one this check answers.
+const MIRROR_HEADING = "## Installing JAM into another project";
+const mirrored = (path) => {
+  const text = read(path);
+  const start = text.indexOf(MIRROR_HEADING);
+  if (start < 0) {
+    fail(path, `no "${MIRROR_HEADING}" section - the agent install rules live there`);
+    return undefined;
+  }
+  const rest = text.slice(start + MIRROR_HEADING.length);
+  const end = rest.search(/\n## /);
+  return end < 0 ? rest : rest.slice(0, end);
+};
+const agentsBlock = mirrored("AGENTS.md");
+const claudeBlock = mirrored("CLAUDE.md");
+if (agentsBlock !== undefined && claudeBlock !== undefined && agentsBlock !== claudeBlock) {
+  fail("AGENTS.md", `"${MIRROR_HEADING}" no longer matches CLAUDE.md word for word`);
 }
 
 if (problems.length === 0) {
