@@ -139,7 +139,7 @@ itself — the MCP server, the setup core and the CLI they all reach.
 **For a person**, once per machine:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.1.0 init
+npx --yes @jam-mcp/bootstrap@1.2.0 init
 ```
 
 Choose whether you're *using* JAM (runs the published package) or *developing*
@@ -153,10 +153,10 @@ installing the launcher globally, and everything it runs still goes through the
 runtime you chose above:
 
 ```bash
-npm install -g @jam-mcp/launcher@1.1.0
+npm install -g @jam-mcp/launcher@1.2.0
 ```
 
-Without it, the same commands are `npx --yes @jam-mcp/launcher@1.1.0 <command>`.
+Without it, the same commands are `npx --yes @jam-mcp/launcher@1.2.0 <command>`.
 Nothing else changes — not your editor's wiring, not a shared `.mcp.json`, not
 a teammate who never installed it.
 
@@ -197,15 +197,15 @@ to set JAM up in a project, **use the official path** rather than working out
 an installation from this README:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.1.0 setup --agent
+npx --yes @jam-mcp/bootstrap@1.2.0 setup --agent
 ```
 
 or, to inspect before acting:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.1.0 setup plan --json                     # what would change; changes nothing
-npx --yes @jam-mcp/bootstrap@1.1.0 setup apply --non-interactive --json  # execute it
-npx --yes @jam-mcp/bootstrap@1.1.0 doctor --json                         # verify
+npx --yes @jam-mcp/bootstrap@1.2.0 setup plan --json                     # what would change; changes nothing
+npx --yes @jam-mcp/bootstrap@1.2.0 setup apply --non-interactive --json  # execute it
+npx --yes @jam-mcp/bootstrap@1.2.0 doctor --json                         # verify
 ```
 
 Each returns a single JSON document on stdout with a stable status code. Branch
@@ -229,12 +229,12 @@ Do **not**:
 
 Stop only where a person is genuinely required — `JAM_PROJECT_SELECTION_REQUIRED`
 (ask which Jira project) and `JAM_AUTH_REQUIRED` (ask them to authenticate).
-Finish with `npx --yes @jam-mcp/bootstrap@1.1.0 doctor --json`.
+Finish with `npx --yes @jam-mcp/bootstrap@1.2.0 doctor --json`.
 
 ## Commands
 
 These read as `jam …` throughout — the short form from the optional global
-install above. Everything works the same as `npx --yes @jam-mcp/launcher@1.1.0
+install above. Everything works the same as `npx --yes @jam-mcp/launcher@1.2.0
 …` if you skipped it.
 
 ```text
@@ -302,7 +302,7 @@ and is safe to commit:
 ```json
 {
   "mcpServers": {
-    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.1.0", "serve"] }
+    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.2.0", "serve"] }
   }
 }
 ```
