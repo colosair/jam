@@ -30,6 +30,20 @@ export interface JiraAssigneeResolutionPort {
   searchUsers(query: string): Promise<AssigneeCandidate[]>;
 
   /**
+   * One user, looked up by identity rather than found by searching.
+   *
+   * JAM's contract says `assignee` may be an accountId, and a contract about
+   * identity has to be met by an identity lookup. Jira's user search does
+   * currently return a user when the query happens to be their accountId, but
+   * that is a property of a substring search, not a promise - relying on it
+   * means the accountId half of the contract holds by coincidence.
+   *
+   * Absent means Jira has no such account, or this token cannot see it. Both
+   * are "you cannot assign this", which is the caller's answer either way.
+   */
+  getUserByAccountId(accountId: string): Promise<AssigneeCandidate | undefined>;
+
+  /**
    * Whether this exact account may be assigned this exact issue, right now.
    *
    * Asked by accountId, so it is an identity question rather than a name one.

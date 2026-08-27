@@ -391,6 +391,9 @@ export class UnreachableAssignees implements JiraAssigneeResolutionPort {
   async searchUsers(): Promise<AssigneeCandidate[]> {
     throw new Error("test reached the assignee resolution port unexpectedly");
   }
+  async getUserByAccountId(): Promise<AssigneeCandidate | undefined> {
+    throw new Error("test reached the assignee resolution port unexpectedly");
+  }
   async isAssignable(): Promise<boolean> {
     throw new Error("test reached the assignee resolution port unexpectedly");
   }
@@ -411,7 +414,14 @@ export class FakeAssignees implements JiraAssigneeResolutionPort {
   users: AssigneeCandidate[];
   assignable: Set<string>;
   readonly searches: string[] = [];
+  readonly lookups: string[] = [];
   readonly assignableChecks: { issueKey: string; accountId: string }[] = [];
+  /**
+   * Whether the substring search also matches an accountId, as the real Jira
+   * currently does. Turning it off is how a test shows the exact lookup
+   * carrying the accountId contract on its own.
+   */
+  searchMatchesAccountId = true;
 
   constructor(options: { users?: AssigneeCandidate[]; assignable?: string[] } = {}) {
     this.users = options.users ?? [
@@ -428,8 +438,16 @@ export class FakeAssignees implements JiraAssigneeResolutionPort {
     this.searches.push(query);
     const q = query.trim().toLowerCase();
     return this.users.filter(
-      (u) => u.displayName.toLowerCase().includes(q) || u.accountId === query.trim(),
+      (u) =>
+        u.displayName.toLowerCase().includes(q) ||
+        (this.searchMatchesAccountId && u.accountId === query.trim()),
     );
+  }
+
+  /** The exact lookup: an identity, or nothing. Never a near miss. */
+  async getUserByAccountId(accountId: string): Promise<AssigneeCandidate | undefined> {
+    this.lookups.push(accountId);
+    return this.users.find((u) => u.accountId === accountId);
   }
 
   async isAssignable(issueKey: string, accountId: string): Promise<boolean> {

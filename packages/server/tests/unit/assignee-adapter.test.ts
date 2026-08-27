@@ -193,3 +193,82 @@ describe("JiraCloudWriteAdapter.assignIssue", () => {
     expect(attempts).toBe(1);
   });
 });
+
+describe("JiraCloudAssigneeResolutionAdapter.getUserByAccountId", () => {
+  it("asks the exact user endpoint, not the search", async () => {
+    const { calls, fetchImpl } = recorder(() =>
+      json({ accountId: "acc-1", displayName: "Min Kim", active: true }),
+    );
+    const adapter = new JiraCloudAssigneeResolutionAdapter(new FakeCredentials(), fetchImpl);
+
+    const user = await adapter.getUserByAccountId("acc-1");
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toContain("/rest/api/3/user?");
+    expect(calls[0]!.url).toContain("accountId=acc-1");
+    expect(calls[0]!.url).not.toContain("/user/search");
+    expect(user).toEqual({ accountId: "acc-1", displayName: "Min Kim", active: true });
+  });
+
+  it("encodes an accountId containing a colon", async () => {
+    // Real Jira Cloud ids look like `712020:d876...`, and an unencoded colon
+    // in a query string is not the id Jira was asked about.
+    const { calls, fetchImpl } = recorder(() => json({ accountId: "712020:abc", displayName: "X" }));
+    const adapter = new JiraCloudAssigneeResolutionAdapter(new FakeCredentials(), fetchImpl);
+
+    await adapter.getUserByAccountId("712020:abc");
+
+    expect(calls[0]!.url).toContain("accountId=712020%3Aabc");
+  });
+
+  it("reports an account Jira will not show as absent, not as a failure", async () => {
+    // 404 covers both "no such account" and "this token cannot see it", and
+    // they are the same answer to somebody who wanted to assign it.
+    const { fetchImpl } = recorder(() => json({ errorMessages: ["does not exist"] }, 404));
+    const adapter = new JiraCloudAssigneeResolutionAdapter(new FakeCredentials(), fetchImpl);
+
+    expect(await adapter.getUserByAccountId("acc-nobody")).toBeUndefined();
+  });
+
+  it("does not turn a real failure into an absence", async () => {
+    const { fetchImpl } = recorder(() => json({ message: "unavailable" }, 503));
+    const adapter = new JiraCloudAssigneeResolutionAdapter(new FakeCredentials(), fetchImpl);
+
+    await expect(adapter.getUserByAccountId("acc-1")).rejects.toBeInstanceOf(JamError);
+  });
+
+  it("drops an app account here too", async () => {
+    const { fetchImpl } = recorder(() =>
+      json({ accountId: "acc-app", displayName: "Automation", accountType: "app" }),
+    );
+    const adapter = new JiraCloudAssigneeResolutionAdapter(new FakeCredentials(), fetchImpl);
+
+    expect(await adapter.getUserByAccountId("acc-app")).toBeUndefined();
+  });
+
+  it("does not retry, because its answer decides a mutation", async () => {
+    const { calls, fetchImpl } = recorder(() => json({ message: "unavailable" }, 503));
+    const adapter = new JiraCloudAssigneeResolutionAdapter(new FakeCredentials(), fetchImpl);
+
+    await expect(adapter.getUserByAccountId("acc-1")).rejects.toBeInstanceOf(JamError);
+
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe("JiraCloudAssigneeResolutionAdapter.searchUsers with an accountId", () => {
+  it("passes the accountId through as the query, which Jira currently matches", async () => {
+    // Pinned because JAM relies on it for the common path: the exact lookup is
+    // the fallback, and this is the request that usually makes it unnecessary.
+    const { calls, fetchImpl } = recorder(() =>
+      json([{ accountId: "712020:abc", displayName: "Min Kim", active: true }]),
+    );
+    const adapter = new JiraCloudAssigneeResolutionAdapter(new FakeCredentials(), fetchImpl);
+
+    const users = await adapter.searchUsers("712020:abc");
+
+    expect(calls[0]!.url).toContain("/rest/api/3/user/search");
+    expect(calls[0]!.url).toContain("query=712020%3Aabc");
+    expect(users).toEqual([{ accountId: "712020:abc", displayName: "Min Kim", active: true }]);
+  });
+});

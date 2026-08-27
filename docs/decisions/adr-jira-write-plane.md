@@ -79,6 +79,14 @@ case), and refuses with the candidates attached otherwise
 substring hit is Jira reporting a similarity, not identifying who was meant,
 and choosing it would cost somebody an issue assigned to the wrong colleague.
 
+An accountId is resolved by an identity lookup rather than by a search that
+happens to match it. Jira's user search does currently return a user when the
+query is their accountId - but that is a property of a substring search, not a
+promise, and a contract that says "or an accountId" cannot rest on a
+coincidence. The search runs first because it usually settles both halves; when
+it settles nothing, `GET /rest/api/3/user?accountId=` is asked before giving
+up. The string is never inspected to guess whether it looks like an id.
+
 Assignability is asked, not modelled: JAM does not carry a copy of Jira's
 permission scheme, so it asks whether this account may hold this issue - at
 plan time, and again immediately before the write, because a permission that
