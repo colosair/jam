@@ -17,6 +17,12 @@ import type { JiraTransition } from "../domain/write.js";
  * surface is not: only whitelisted operations reach it (see domain/write.ts).
  */
 export interface JiraWritePort {
+  /**
+   * Create one issue. The only call here that brings an issue into existence,
+   * and the one where a retry is most expensive: a duplicate update is a
+   * no-op, a duplicate create is a second issue on someone's board.
+   */
+  createIssue(fields: Record<string, unknown>): Promise<{ id: string; key: string }>;
   updateIssue(key: string, fields: Record<string, unknown>): Promise<void>;
   addComment(key: string, body: string): Promise<{ id: string }>;
   /** Transitions Jira offers for this issue right now, for this account. */

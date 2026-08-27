@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { JiraCloudWriteAdapter, textToAdf } from "../../src/adapters/jira-cloud/jira-write.adapter.js";
+import { JiraCloudWriteAdapter } from "../../src/adapters/jira-cloud/jira-write.adapter.js";
+import { textToAdf } from "../../src/domain/adf.js";
 import { JamError } from "../../src/domain/errors.js";
 import type { CredentialPort } from "../../src/ports/credentials.port.js";
 
@@ -173,5 +174,85 @@ describe("plain text to ADF", () => {
   it("splits on blank lines only", () => {
     const doc = textToAdf("a\nb\n\nc") as { content: unknown[] };
     expect(doc.content).toHaveLength(2);
+  });
+});
+
+describe("JiraCloudWriteAdapter.createIssue", () => {
+  it("POSTs the create to /rest/api/3/issue with the fields it was given", async () => {
+    const { calls, fetchImpl } = recorder(() => json({ id: "10500", key: "PROJECT-500" }));
+    const adapter = new JiraCloudWriteAdapter(credentials, fetchImpl);
+
+    const created = await adapter.createIssue({
+      project: { key: "PROJECT" },
+      issuetype: { id: "10001" },
+      summary: "Write the thing",
+      description: textToAdf("why"),
+      priority: { name: "High" },
+      labels: ["jam"],
+      components: [{ name: "Backend" }],
+    });
+
+    expect(created).toEqual({ id: "10500", key: "PROJECT-500" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.method).toBe("POST");
+    expect(calls[0]!.url).toBe("https://example.atlassian.net/rest/api/3/issue");
+    expect(calls[0]!.body).toEqual({
+      fields: {
+        project: { key: "PROJECT" },
+        issuetype: { id: "10001" },
+        summary: "Write the thing",
+        description: {
+          type: "doc",
+          version: 1,
+          content: [{ type: "paragraph", content: [{ type: "text", text: "why" }] }],
+        },
+        priority: { name: "High" },
+        labels: ["jam"],
+        components: [{ name: "Backend" }],
+      },
+    });
+  });
+
+  it("does not retry a 503 - a second create is a second issue", async () => {
+    const { calls, fetchImpl } = recorder(() => json({ message: "unavailable" }, 503));
+    const adapter = new JiraCloudWriteAdapter(credentials, fetchImpl);
+
+    await expect(adapter.createIssue({ summary: "x" })).rejects.toBeInstanceOf(JamError);
+
+    expect(calls).toHaveLength(1);
+  });
+
+  it("does not retry a 429 either", async () => {
+    const { calls, fetchImpl } = recorder(() => json({ message: "slow down" }, 429));
+    const adapter = new JiraCloudWriteAdapter(credentials, fetchImpl);
+
+    await expect(adapter.createIssue({ summary: "x" })).rejects.toBeInstanceOf(JamError);
+
+    expect(calls).toHaveLength(1);
+  });
+
+  it("does not retry a dropped connection", async () => {
+    let attempts = 0;
+    const fetchImpl = (async () => {
+      attempts += 1;
+      throw new Error("socket hang up");
+    }) as unknown as typeof fetch;
+    const adapter = new JiraCloudWriteAdapter(credentials, fetchImpl);
+
+    await expect(adapter.createIssue({ summary: "x" })).rejects.toBeTruthy();
+
+    expect(attempts).toBe(1);
+  });
+
+  it("reports a create Jira would not name as uncertain, not as done", async () => {
+    // An issue may now exist that JAM cannot point at. That is the uncertain
+    // case exactly: say so, and do not send it again.
+    const { fetchImpl } = recorder(() => json({}));
+    const adapter = new JiraCloudWriteAdapter(credentials, fetchImpl);
+
+    await expect(adapter.createIssue({ project: { key: "PROJECT" } })).rejects.toMatchObject({
+      code: "JAM_WRITE_UNCERTAIN",
+      details: { project: "PROJECT" },
+    });
   });
 });

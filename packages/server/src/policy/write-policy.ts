@@ -1,9 +1,12 @@
 import { JamError } from "../domain/errors.js";
 import {
+  EXISTING_ISSUE_OPERATIONS,
+  isExistingIssueOperation,
   isWritableField,
   isWriteOperation,
   WRITABLE_FIELDS,
   WRITE_OPERATIONS,
+  type ExistingIssueOperation,
   type FieldUpdateInput,
   type JiraTransition,
   type WriteOperation,
@@ -80,6 +83,25 @@ export function assertOperationAllowed(operation: string): WriteOperation {
       "JAM_WRITE_OPERATION_NOT_ALLOWED",
       `"${operation}" is not a JAM write operation. Supported: ${WRITE_OPERATIONS.join(", ")}.`,
       { operation, supported: [...WRITE_OPERATIONS] },
+    );
+  }
+  return operation;
+}
+
+/**
+ * Narrow an already-allowed operation to one that acts on an existing issue.
+ *
+ * Reached only after routing has sent `issue.create` elsewhere, so this is a
+ * type-level guarantee rather than a second policy decision - but it is a
+ * guarantee worth having, because everything downstream reads an issue key
+ * that creation does not have.
+ */
+export function assertExistingIssueOperation(operation: string): ExistingIssueOperation {
+  if (!isExistingIssueOperation(operation)) {
+    throw new JamError(
+      "JAM_WRITE_OPERATION_NOT_ALLOWED",
+      `"${operation}" does not change an existing issue. Operations that do: ${EXISTING_ISSUE_OPERATIONS.join(", ")}.`,
+      { operation, supported: [...EXISTING_ISSUE_OPERATIONS] },
     );
   }
   return operation;

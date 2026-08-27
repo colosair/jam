@@ -8,6 +8,7 @@ import type { ProjectConfig } from "./config/schema.js";
 import type { CachePort } from "./ports/cache.port.js";
 import type { CredentialPort } from "./ports/credentials.port.js";
 import type { JiraReadPort } from "./ports/jira-read.port.js";
+import type { JiraCreateMetadataPort } from "./ports/jira-create-metadata.port.js";
 import type { JiraWritePort } from "./ports/jira-write.port.js";
 import { WritePlanStore } from "./application/write-plan-store.js";
 import type { TelemetryPort } from "./ports/telemetry.port.js";
@@ -26,6 +27,14 @@ export type JamDeps = {
    */
   jiraWrite: JiraWritePort;
   /**
+   * What Jira will accept when creating an issue here. A third port rather
+   * than a method on either of the others: it mutates nothing, so it does not
+   * belong behind the write port's no-retry contract, and it answers a
+   * question about a project rather than about an issue, so the read port's
+   * completeness semantics would mean nothing for it.
+   */
+  jiraCreateMetadata: JiraCreateMetadataPort;
+  /**
    * Plans awaiting apply. Lives for the life of this server process - see
    * WritePlanStore for why it is not persisted.
    */
@@ -41,6 +50,8 @@ export type BuildDepsOptions = {
   jira?: JiraReadPort;
   /** Injected by tests so no test can reach a real Jira write endpoint. */
   jiraWrite?: JiraWritePort;
+  /** Injected by tests so create metadata comes from a fixture, not a site. */
+  jiraCreateMetadata?: JiraCreateMetadataPort;
   /** Injected by tests to bypass the real process/registry credential lookup. */
   credentials?: CredentialPort;
   /**
@@ -98,12 +109,21 @@ export async function buildDeps(options: BuildDepsOptions = {}): Promise<JamDeps
     jiraWrite = new JiraCloudWriteAdapter(credentials);
   }
 
+  let jiraCreateMetadata = options.jiraCreateMetadata;
+  if (!jiraCreateMetadata) {
+    const { JiraCloudCreateMetadataAdapter } = await import(
+      "./adapters/jira-cloud/jira-create-metadata.adapter.js"
+    );
+    jiraCreateMetadata = new JiraCloudCreateMetadataAdapter(credentials);
+  }
+
   return {
     config: resolved.config,
     configPath: resolved.configPath,
     keySource: resolved.keySource,
     jira,
     jiraWrite,
+    jiraCreateMetadata,
     writePlans: new WritePlanStore(),
     cache: new NoopCache(),
     telemetry,

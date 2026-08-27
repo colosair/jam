@@ -53,10 +53,28 @@ the user consented to during setup. A key from anywhere else is refused by JAM
 (`JAM_WRITE_SCOPE_VIOLATION`) before a request is made, rather than left to
 come back as an unexplained 403.
 
-**The public surface is a closed set.** Three operations — `comment.add`,
-`field.update`, `status.transition` — and a four-field whitelist for updates.
-Comments are accepted as plain text and converted to ADF here; an agent cannot
-supply a document tree.
+**The public surface is a closed set.** Four operations — `comment.add`,
+`field.update`, `status.transition`, `issue.create` — a four-field whitelist for
+updates, and a six-field one for creation. Comments and descriptions are
+accepted as plain text and converted to ADF here; an agent cannot supply a
+document tree.
+
+**Creation checks the schema instead of a revision.** The other three
+operations detect a conflict by comparing the issue's `updated` timestamp
+between plan and apply. Creation has no issue and no revision, so its
+concurrency boundary is the project's create schema: a plan records the
+premises it was built on — the issue type, the required fields, the values
+resolved from Jira's allowed lists — and apply re-derives whether each still
+holds (`JAM_WRITE_SCHEMA_CHANGED`). Deliberately not a hash of the metadata
+document: an unrelated optional field appearing on a create screen invalidates
+nothing, and treating it as though it did would make every plan on an active
+project fail.
+
+**A create is never retried.** This is the sharpest case of the rule the whole
+write plane follows. A repeated update converges; a repeated create leaves a
+second issue with a key nobody is holding. An ambiguous failure — a 5xx, a
+dropped connection, or a create Jira accepted without naming — is reported as
+`JAM_WRITE_UNCERTAIN` and resolved by looking in the project.
 
 ## Where plans live
 

@@ -16,7 +16,12 @@ import type {
 } from "../src/ports/jira-read.port.js";
 import type { TelemetryPort, ToolMetrics } from "../src/ports/telemetry.port.js";
 import type { JiraWritePort } from "../src/ports/jira-write.port.js";
-import type { JiraTransition } from "../src/domain/write.js";
+import type { JiraCreateMetadataPort } from "../src/ports/jira-create-metadata.port.js";
+import type {
+  CreateFieldMetadata,
+  CreateIssueType,
+  JiraTransition,
+} from "../src/domain/write.js";
 import { WritePlanStore } from "../src/application/write-plan-store.js";
 import type { FullIssueContext } from "../src/domain/context.js";
 
@@ -129,11 +134,13 @@ export function testDeps(
   config: ProjectConfig = testConfig(),
   jiraWrite: JiraWritePort = new UnreachableJiraWrite(),
   writePlans: WritePlanStore = new WritePlanStore(),
+  jiraCreateMetadata: JiraCreateMetadataPort = new UnreachableCreateMetadata(),
 ): JamDeps {
   return {
     config,
     jira,
     jiraWrite,
+    jiraCreateMetadata,
     writePlans,
     cache: new NoopCache(),
     telemetry: new RecordingTelemetry(),
@@ -148,6 +155,9 @@ export function testDeps(
  * fail loudly, not silently pass having mutated nothing.
  */
 export class UnreachableJiraWrite implements JiraWritePort {
+  async createIssue(): Promise<{ id: string; key: string }> {
+    throw new Error("test reached the write port unexpectedly");
+  }
   async updateIssue(): Promise<void> {
     throw new Error("test reached the write port unexpectedly");
   }
@@ -173,7 +183,16 @@ export class FakeJiraWrite implements JiraWritePort {
   readonly updates: { key: string; fields: Record<string, unknown> }[] = [];
   readonly comments: { key: string; body: string }[] = [];
   readonly transitionCalls: { key: string; transitionId: string }[] = [];
+  readonly creates: Record<string, unknown>[] = [];
+  /**
+   * How many times createIssue was entered, including calls that then failed.
+   * `creates` records only the ones that got as far as Jira accepting them, so
+   * proving "sent exactly once, even when it blew up" needs this counter.
+   */
+  createCalls = 0;
   transitions: JiraTransition[] = [];
+  /** The key the next create returns. Absent means Jira named nothing. */
+  createdKey?: string = "PROJECT-500";
   /** Thrown by the next mutating call, once. */
   failNext?: Error;
 
@@ -186,6 +205,16 @@ export class FakeJiraWrite implements JiraWritePort {
     if (!err) return;
     this.failNext = undefined as unknown as Error;
     throw err;
+  }
+
+  async createIssue(fields: Record<string, unknown>): Promise<{ id: string; key: string }> {
+    this.createCalls += 1;
+    this.throwIfArmed();
+    this.creates.push(fields);
+    if (!this.createdKey) {
+      throw new Error("Jira accepted a create but returned no key");
+    }
+    return { id: "10500", key: this.createdKey };
   }
 
   async updateIssue(key: string, fields: Record<string, unknown>): Promise<void> {
@@ -210,7 +239,78 @@ export class FakeJiraWrite implements JiraWritePort {
 
   /** Every mutating call, in order - used to prove nothing was retried. */
   get mutations(): number {
-    return this.updates.length + this.comments.length + this.transitionCalls.length;
+    return (
+      this.updates.length + this.comments.length + this.transitionCalls.length + this.creates.length
+    );
+  }
+}
+
+/**
+ * The default create-metadata port, for tests that are not about creating.
+ *
+ * Throws, like UnreachableJiraWrite: reaching Jira's create schema from a test
+ * that never meant to should fail loudly rather than quietly answer nothing.
+ */
+export class UnreachableCreateMetadata implements JiraCreateMetadataPort {
+  async getIssueTypes(): Promise<CreateIssueType[]> {
+    throw new Error("test reached the create metadata port unexpectedly");
+  }
+  async getCreateFields(): Promise<CreateFieldMetadata[]> {
+    throw new Error("test reached the create metadata port unexpectedly");
+  }
+}
+
+/**
+ * A create schema served from a fixture, and a record of what was asked.
+ *
+ * `issueTypes` and `fields` are mutable so a test can change the answer
+ * between plan and apply - which is the whole of the schema-revalidation
+ * story, and cannot be told with a frozen fixture.
+ */
+export class FakeCreateMetadata implements JiraCreateMetadataPort {
+  issueTypes: CreateIssueType[];
+  fields: CreateFieldMetadata[];
+  readonly issueTypeCalls: string[] = [];
+  readonly fieldCalls: { projectKey: string; issueTypeId: string }[] = [];
+
+  constructor(
+    options: { issueTypes?: CreateIssueType[]; fields?: CreateFieldMetadata[] } = {},
+  ) {
+    this.issueTypes = options.issueTypes ?? [
+      { id: "10001", name: "Task", subtask: false },
+      { id: "10002", name: "Bug", subtask: false },
+      { id: "10003", name: "Subtask", subtask: true },
+    ];
+    this.fields = options.fields ?? [
+      { id: "summary", name: "Summary", required: true, hasDefaultValue: false },
+      { id: "issuetype", name: "Issue Type", required: true, hasDefaultValue: false },
+      { id: "description", name: "Description", required: false, hasDefaultValue: false },
+      {
+        id: "priority",
+        name: "Priority",
+        required: false,
+        hasDefaultValue: true,
+        allowedValues: [{ id: "1", name: "High" }, { id: "2", name: "Medium" }, { id: "3", name: "Low" }],
+      },
+      { id: "labels", name: "Labels", required: false, hasDefaultValue: false },
+      {
+        id: "components",
+        name: "Components",
+        required: false,
+        hasDefaultValue: false,
+        allowedValues: [{ id: "100", name: "Backend" }, { id: "101", name: "Frontend" }],
+      },
+    ];
+  }
+
+  async getIssueTypes(projectKey: string): Promise<CreateIssueType[]> {
+    this.issueTypeCalls.push(projectKey);
+    return this.issueTypes;
+  }
+
+  async getCreateFields(projectKey: string, issueTypeId: string): Promise<CreateFieldMetadata[]> {
+    this.fieldCalls.push({ projectKey, issueTypeId });
+    return this.fields;
   }
 }
 

@@ -72,13 +72,21 @@ agent could smuggle a change JAM has not looked at. What "Done" means is settled
 during planning — JAM asks Jira which transitions this issue actually offers and
 resolves the id, rather than guessing one from a status name.
 
-Three operations, and a fixed field whitelist:
+Four operations, and a fixed field whitelist:
 
 ```text
 comment.add        { "text": "..." }         plain text; JAM converts it, ADF is not accepted
 field.update       summary, priority, labels, components
 status.transition  { "status": "Done" }      matched against Jira's available transitions
+issue.create       issueType, summary + description, priority, labels, components
 ```
+
+`issue.create` takes no `key` — there is no issue yet — and no project either:
+the new issue goes into the project this workspace is bound to. Planning reads
+Jira's create schema for that project first, so an issue type Jira does not
+offer, a priority outside its allowed values, or a create screen that requires
+a field JAM cannot set are all refused with the alternatives attached, before
+anything is sent. Assignee, parent and custom fields are not settable.
 
 ### What stops a write going wrong
 

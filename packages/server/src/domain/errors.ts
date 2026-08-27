@@ -26,6 +26,15 @@ export const JAM_ERROR_CODES = [
   "JAM_WRITE_OPERATION_NOT_ALLOWED",
   "JAM_WRITE_FIELD_NOT_ALLOWED",
   "JAM_WRITE_TRANSITION_NOT_AVAILABLE",
+  // Creation. Each is a refusal JAM makes before Jira is asked to act, or a
+  // premise that stopped holding between planning and applying - never a raw
+  // Jira 400 passed along. "That type is not on offer", "this project needs a
+  // field JAM cannot fill" and "the schema moved under the plan" are three
+  // different next steps for whoever is holding the agent.
+  "JAM_WRITE_ISSUE_TYPE_NOT_AVAILABLE",
+  "JAM_WRITE_REQUIRED_FIELD_UNSUPPORTED",
+  "JAM_WRITE_VALUE_NOT_ALLOWED",
+  "JAM_WRITE_SCHEMA_CHANGED",
   "JAM_WRITE_PLAN_NOT_FOUND",
   "JAM_WRITE_PLAN_EXPIRED",
   "JAM_WRITE_CONFLICT",

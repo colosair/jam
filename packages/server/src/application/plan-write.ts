@@ -3,24 +3,28 @@ import type { FullIssueContext } from "../domain/context.js";
 import { JamError } from "../domain/errors.js";
 import type {
   CommentAddInput,
+  ExistingIssueOperation,
+  ExistingIssueWritePlan,
   FieldUpdateInput,
   StatusTransitionInput,
   WriteInput,
   WriteMutation,
-  WriteOperation,
   WritePlan,
   WritePlanReceipt,
 } from "../domain/write.js";
 import {
+  assertExistingIssueOperation,
   assertFieldsAllowed,
   assertOperationAllowed,
   assertWriteScope,
   PLAN_TTL_MS,
   resolveTransition,
 } from "../policy/write-policy.js";
+import { planCreateIssue } from "./plan-create-issue.js";
 
 export type PlanWriteRequest = {
-  key: string;
+  /** Absent for `issue.create`, which names a project rather than an issue. */
+  key?: string;
   operation: string;
   input: Record<string, unknown>;
 };
@@ -42,9 +46,17 @@ export async function planWrite(
   deps: JamDeps,
   request: PlanWriteRequest,
 ): Promise<{ plan: WritePlan; receipt: WritePlanReceipt }> {
-  const issueKey = request.key.trim().toUpperCase();
+  // Creation branches before anything else touches `key`, because it has none.
+  // Routing on the operation rather than on whether a key happened to be
+  // supplied keeps the two request shapes genuinely separate instead of one
+  // shape with holes in it.
+  if (assertOperationAllowed(request.operation) === "issue.create") {
+    return planCreateIssue(deps, { input: request.input });
+  }
+
+  const issueKey = requireIssueKey(request);
   const projectKey = assertWriteScope(issueKey, deps.config.project.key);
-  const operation = assertOperationAllowed(request.operation);
+  const operation = assertExistingIssueOperation(request.operation);
 
   // Everything that can be refused from the request alone is refused here,
   // before a Jira call is spent on it. An agent asking to write a field JAM
@@ -64,6 +76,7 @@ export async function planWrite(
 
   const createdAt = new Date();
   const plan = deps.writePlans.create({
+    kind: "existing-issue",
     issueKey,
     projectKey,
     operation,
@@ -74,7 +87,7 @@ export async function planWrite(
     expiresAt: new Date(createdAt.getTime() + PLAN_TTL_MS).toISOString(),
     ...(transition ? { transition } : {}),
     mutation,
-  });
+  }) as ExistingIssueWritePlan;
 
   return {
     plan,
@@ -100,7 +113,10 @@ export async function planWrite(
 export async function readIssue(deps: JamDeps, issueKey: string): Promise<FullIssueContext> {
   const { issues } = await deps.jira.getIssues({
     keys: [issueKey],
-    fields: ["summary", "status", "priority", "labels", "components", "updated"],
+    // `issuetype` is here for creation's verification step, which has to
+    // confirm the issue Jira made is the type that was asked for. It costs
+    // nothing on the other operations.
+    fields: ["summary", "status", "issuetype", "priority", "labels", "components", "updated"],
   });
 
   const issue = issues[0];
@@ -115,13 +131,33 @@ export async function readIssue(deps: JamDeps, issueKey: string): Promise<FullIs
 }
 
 /**
+ * The issue an existing-issue operation names, or a refusal that says why.
+ *
+ * `key` is optional on the request only because `issue.create` has no issue.
+ * Reaching here means the operation does have one, so its absence is the
+ * caller using the wrong shape - which is worth saying, rather than reading as
+ * an empty key and failing further in.
+ */
+function requireIssueKey(request: PlanWriteRequest): string {
+  const key = request.key?.trim();
+  if (!key) {
+    throw new JamError(
+      "JAM_WRITE_OPERATION_NOT_ALLOWED",
+      `${request.operation} changes an issue that already exists, so it needs \`key\`.`,
+      { operation: request.operation },
+    );
+  }
+  return key.toUpperCase();
+}
+
+/**
  * Check the request against the contract, and normalize it.
  *
  * Pure: no Jira, no state. Whether an operation is supported, whether a field
  * is writable and whether the input is even the right shape are all knowable
  * without asking Jira anything, so they are answered first.
  */
-function validateInput(operation: WriteOperation, raw: Record<string, unknown>): WriteInput {
+function validateInput(operation: ExistingIssueOperation, raw: Record<string, unknown>): WriteInput {
   switch (operation) {
     case "comment.add": {
       const text = (raw as CommentAddInput).text;
@@ -152,7 +188,7 @@ function validateInput(operation: WriteOperation, raw: Record<string, unknown>):
 
 async function describe(
   deps: JamDeps,
-  operation: WriteOperation,
+  operation: ExistingIssueOperation,
   issueKey: string,
   issue: FullIssueContext,
   input: WriteInput,
@@ -160,7 +196,7 @@ async function describe(
   before: Record<string, unknown>;
   intendedAfter: Record<string, unknown>;
   mutation: WriteMutation;
-  transition?: WritePlan["transition"];
+  transition?: ExistingIssueWritePlan["transition"];
 }> {
   switch (operation) {
     case "comment.add": {

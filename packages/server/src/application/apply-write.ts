@@ -1,9 +1,10 @@
 import type { JamDeps } from "../deps.js";
 import type { FullIssueContext } from "../domain/context.js";
 import { JamError, toJamError } from "../domain/errors.js";
-import type { WriteApplyReceipt, WritePlan } from "../domain/write.js";
+import type { ExistingIssueWritePlan, WriteApplyReceipt } from "../domain/write.js";
 import { readModeAfterWrite } from "../policy/consistency-policy.js";
 import { assertUnchanged } from "../policy/write-policy.js";
+import { applyCreateIssue } from "./apply-create-issue.js";
 import { readIssue } from "./plan-write.js";
 
 export type ApplyWriteRequest = { planId: string };
@@ -39,6 +40,11 @@ export async function applyWritePlan(
     throw new JamError("CONFIG_INVALID", "Write confirmation must use a direct issue read.");
   }
 
+  // Creation follows the same three steps with a different first one: there is
+  // no issue to re-read, so what gets re-checked is the create schema the plan
+  // was built on. Both paths still end in a direct read of a real issue.
+  if (plan.kind === "create-issue") return applyCreateIssue(deps, plan);
+
   const current = await readIssue(deps, plan.issueKey);
   assertUnchanged(plan.issueKey, plan.baseUpdated, current.updated);
 
@@ -68,7 +74,7 @@ export async function applyWritePlan(
  * transition. So an ambiguous failure is converted into JAM_WRITE_UNCERTAIN
  * and handed back with what to do about it: look, do not retry.
  */
-async function mutate(deps: JamDeps, plan: WritePlan): Promise<{ commentId?: string }> {
+async function mutate(deps: JamDeps, plan: ExistingIssueWritePlan): Promise<{ commentId?: string }> {
   try {
     switch (plan.mutation.kind) {
       case "comment": {
@@ -81,6 +87,14 @@ async function mutate(deps: JamDeps, plan: WritePlan): Promise<{ commentId?: str
       case "transition":
         await deps.jiraWrite.transitionIssue(plan.issueKey, plan.mutation.transitionId);
         return {};
+      case "create":
+        // Unreachable: a create plan is routed to applyCreateIssue above. The
+        // case exists so adding a mutation kind is a compile error here rather
+        // than a silent fall-through that writes nothing and reports success.
+        throw new JamError(
+          "CONFIG_INVALID",
+          "A create mutation cannot be applied through the existing-issue path.",
+        );
     }
   } catch (err) {
     const jamError = toJamError(err);
@@ -111,7 +125,7 @@ function isAmbiguous(err: JamError): boolean {
  * writer could have added one in between, and a count would accept theirs as
  * ours.
  */
-async function verify(deps: JamDeps, plan: WritePlan): Promise<Record<string, unknown>> {
+async function verify(deps: JamDeps, plan: ExistingIssueWritePlan): Promise<Record<string, unknown>> {
   const issue = await readIssue(deps, plan.issueKey);
 
   if (plan.mutation.kind === "comment") {
@@ -137,7 +151,7 @@ async function verify(deps: JamDeps, plan: WritePlan): Promise<Record<string, un
   return observed;
 }
 
-function observedFor(plan: WritePlan, issue: FullIssueContext): Record<string, unknown> {
+function observedFor(plan: ExistingIssueWritePlan, issue: FullIssueContext): Record<string, unknown> {
   const observed: Record<string, unknown> = {};
   for (const field of Object.keys(plan.intendedAfter)) {
     switch (field) {
@@ -173,7 +187,7 @@ function sameValue(observed: unknown, expected: unknown): boolean {
 }
 
 function verificationFailed(
-  plan: WritePlan,
+  plan: ExistingIssueWritePlan,
   expected: Record<string, unknown>,
   observed: Record<string, unknown>,
 ): JamError {
