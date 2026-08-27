@@ -7,6 +7,8 @@ import type { CredentialPort } from "../src/ports/credentials.port.js";
 import type {
   GetCommentsRequest,
   GetCommentsResult,
+  GetIssueRequest,
+  GetIssueResult,
   GetIssuesRequest,
   GetIssuesResult,
   JiraReadPort,
@@ -87,6 +89,14 @@ export type FakeJiraOptions = {
 export class FakeJira implements JiraReadPort {
   readonly searchCalls: SearchPageRequest[] = [];
   readonly issueCalls: GetIssuesRequest[] = [];
+  /**
+   * Single-issue GETs, kept apart from `issueCalls`.
+   *
+   * The write plane must use this one - ConsistencyPolicy calls for a direct
+   * issue GET, and the bulk endpoint is not one. Two counters is what lets a
+   * test say which endpoint was used rather than only that a read happened.
+   */
+  readonly directIssueCalls: GetIssueRequest[] = [];
   readonly commentCalls: GetCommentsRequest[] = [];
   private commentCursor: Record<string, number> = {};
 
@@ -97,6 +107,15 @@ export class FakeJira implements JiraReadPort {
     const pages = this.options.pages ?? [];
     const index = this.searchCalls.length - 1;
     return pages[index] ?? { issues: [], responseBytes: 0 };
+  }
+
+  async getIssue(req: GetIssueRequest): Promise<GetIssueResult> {
+    this.directIssueCalls.push(req);
+    const found = (this.options.issues ?? []).find(
+      (i) => i.key.toUpperCase() === req.key.toUpperCase(),
+    );
+    if (!found) return { responseBytes: 0 };
+    return { issue: { ...found, comments: [...found.comments] }, responseBytes: 50 };
   }
 
   async getIssues(req: GetIssuesRequest): Promise<GetIssuesResult> {

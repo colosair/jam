@@ -24,6 +24,17 @@ export type GetIssuesRequest = {
   fields: string[];
 };
 
+export type GetIssueRequest = {
+  key: string;
+  fields: string[];
+};
+
+export type GetIssueResult = {
+  /** Absent when Jira has no such issue, or this account cannot see it. */
+  issue?: FullIssueContext;
+  responseBytes: number;
+};
+
 export type GetIssuesResult = {
   issues: FullIssueContext[];
   /** Keys that were requested but not returned (missing or not permitted). */
@@ -69,6 +80,20 @@ export type ListProjectsResult = {
 
 export interface JiraReadPort {
   searchPage(req: SearchPageRequest): Promise<SearchPageResult>;
+  /**
+   * One issue, read directly by key.
+   *
+   * Separate from `getIssues` because ConsistencyPolicy requires a direct
+   * issue GET for anything that decides or confirms a write, and `getIssues`
+   * is not one: it is a bulk endpoint that takes a list, and a bulk read is
+   * free to answer from a different path than a single-issue GET. The
+   * distinction only matters in one place - the write plane - which is exactly
+   * where being wrong about it is most expensive.
+   *
+   * Reads and writes both use it: the pre-write conflict check, the post-write
+   * confirmation, and the post-create confirmation.
+   */
+  getIssue(req: GetIssueRequest): Promise<GetIssueResult>;
   getIssues(req: GetIssuesRequest): Promise<GetIssuesResult>;
   getComments(req: GetCommentsRequest): Promise<GetCommentsResult>;
   /** Used by `jam doctor` to prove authentication works. */

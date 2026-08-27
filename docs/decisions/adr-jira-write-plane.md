@@ -70,6 +70,13 @@ document: an unrelated optional field appearing on a create screen invalidates
 nothing, and treating it as though it did would make every plan on an active
 project fail.
 
+**Confirmation is a single-issue GET.** ConsistencyPolicy's "direct issue read"
+is `JiraReadPort.getIssue` - `GET /rest/api/3/issue/{key}` - not the bulk
+`getIssues` the read tools use. A bulk endpoint takes a list and is free to
+answer from a different path than the single-issue one; that is invisible in a
+listing and decisive in the read that decides whether a mutation may proceed or
+whether one landed. The write plane uses it for all three of its reads.
+
 **A receipt's promise is the check.** A create plan's `verification.expects`
 names what a direct read will have to show, and every field it names is
 compared - a field the receipt promises and the check skips reports
