@@ -55,9 +55,11 @@ describe("JiraCloudAssigneeResolutionAdapter.searchUsers", () => {
     const { calls, fetchImpl } = recorder(() => json([]));
     const adapter = new JiraCloudAssigneeResolutionAdapter(new FakeCredentials(), fetchImpl);
 
-    await adapter.searchUsers("이정헌");
+    // A stand-in name, not anyone's. What is under test is the encoding of a
+    // non-ASCII query, which any Hangul string exercises equally.
+    await adapter.searchUsers("홍길동");
 
-    expect(calls[0]!.url).toContain(encodeURIComponent("이정헌"));
+    expect(calls[0]!.url).toContain(encodeURIComponent("홍길동"));
   });
 
   it("works when Jira hides the email, which it usually does", async () => {
