@@ -43,10 +43,31 @@ Show the user what the plan says before applying it. The plan's `before` and
 `intendedAfter` are the whole point of the split: they are what makes the change
 reviewable while it is still cheap to abandon.
 
-Five operations, and nothing else is writable: `comment.add` (plain text),
+Six operations, and nothing else is writable: `comment.add` (plain text),
 `field.update` (summary, priority, labels, components), `status.transition`,
-`assignee.update`, and `issue.create`. Writes are confined to the configured
-Jira project.
+`assignee.update`, `custom-field.update`, and `issue.create`. Writes are
+confined to the configured Jira project.
+
+`custom-field.update` takes `key` and `input.{field, value}`, and changes one
+custom field. **A field being readable does not make it writable.** It has to
+carry `writable: true` in `.jira-agent/project.yaml`; a whitelist written
+before this release grants no writes. `field` is that entry's id or its name,
+matched exactly. Failures to relay rather than retry:
+
+- `JAM_WRITE_FIELD_NOT_ALLOWED` - the team never opted this field in.
+  `details.writableCustomFields` lists the ones they did.
+- `JAM_WRITE_CUSTOM_FIELD_NOT_EDITABLE` - Jira does not offer the field on this
+  issue for this account, or does not offer `set` for it.
+- `JAM_WRITE_CUSTOM_FIELD_TYPE_UNSUPPORTED` - JAM writes single-line text,
+  number, single-select and multi-select. Dates, rich text, user and group
+  pickers and app-owned fields are refused, not attempted.
+- `JAM_WRITE_VALUE_NOT_ALLOWED` - wrong type for the field, or an option Jira
+  does not offer. Types are never converted: `"5"` is not `5`.
+- `JAM_WRITE_SCHEMA_CHANGED` - the field's configuration moved between plan and
+  apply. **Nothing was written.** Plan again.
+
+Not in this version: clearing a field, more than one field per plan, and
+custom fields during `issue.create`.
 
 `assignee.update` takes `key` and `input.assignee` - a display name, or an
 accountId. **Never assume JAM will pick from a partial match.** It searches

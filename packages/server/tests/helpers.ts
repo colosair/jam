@@ -20,10 +20,12 @@ import type { TelemetryPort, ToolMetrics } from "../src/ports/telemetry.port.js"
 import type { JiraWritePort } from "../src/ports/jira-write.port.js";
 import type { JiraCreateMetadataPort } from "../src/ports/jira-create-metadata.port.js";
 import type { JiraAssigneeResolutionPort } from "../src/ports/jira-assignee-resolution.port.js";
+import type { JiraEditMetadataPort } from "../src/ports/jira-edit-metadata.port.js";
 import type {
   AssigneeCandidate,
   CreateFieldMetadata,
   CreateIssueType,
+  EditFieldMetadata,
   JiraTransition,
 } from "../src/domain/write.js";
 import { WritePlanStore } from "../src/application/write-plan-store.js";
@@ -90,6 +92,8 @@ export type FakeJiraOptions = {
    * cannot carry one, and the write plane verifies on identity.
    */
   assigneeAccountIds?: Record<string, string>;
+  /** Raw custom field values per issue key, as Jira would return them. */
+  customFieldValues?: Record<string, Record<string, unknown>>;
 };
 
 /** In-memory JiraReadPort so pagination and completeness can be tested exactly. */
@@ -108,6 +112,13 @@ export class FakeJira implements JiraReadPort {
   private commentCursor: Record<string, number> = {};
 
   constructor(private readonly options: FakeJiraOptions = {}) {}
+
+  /** What the next direct read reports for a custom field. */
+  setCustomField(key: string, fieldId: string, raw: unknown): void {
+    this.options.customFieldValues ??= {};
+    this.options.customFieldValues[key] ??= {};
+    this.options.customFieldValues[key]![fieldId] = raw;
+  }
 
   /** Move an issue's revision, the way another writer would. */
   setUpdated(key: string, updated: string): void {
@@ -141,9 +152,15 @@ export class FakeJira implements JiraReadPort {
     );
     if (!found) return { responseBytes: 0 };
     const accountId = this.options.assigneeAccountIds?.[found.key];
+    const stored = this.options.customFieldValues?.[found.key] ?? {};
+    const customFieldValues: Record<string, unknown> = {};
+    for (const field of req.fields) {
+      if (field.startsWith("customfield_")) customFieldValues[field] = stored[field] ?? null;
+    }
     return {
       issue: { ...found, comments: [...found.comments] },
       ...(accountId ? { assigneeAccountId: accountId } : {}),
+      ...(Object.keys(customFieldValues).length > 0 ? { customFieldValues } : {}),
       responseBytes: 50,
     };
   }
@@ -185,6 +202,7 @@ export function testDeps(
   writePlans: WritePlanStore = new WritePlanStore(),
   jiraCreateMetadata: JiraCreateMetadataPort = new UnreachableCreateMetadata(),
   jiraAssignees: JiraAssigneeResolutionPort = new UnreachableAssignees(),
+  jiraEditMetadata: JiraEditMetadataPort = new UnreachableEditMetadata(),
 ): JamDeps {
   return {
     config,
@@ -192,6 +210,7 @@ export function testDeps(
     jiraWrite,
     jiraCreateMetadata,
     jiraAssignees,
+    jiraEditMetadata,
     writePlans,
     cache: new NoopCache(),
     telemetry: new RecordingTelemetry(),
@@ -453,6 +472,109 @@ export class FakeAssignees implements JiraAssigneeResolutionPort {
   async isAssignable(issueKey: string, accountId: string): Promise<boolean> {
     this.assignableChecks.push({ issueKey, accountId });
     return this.assignable.has(accountId);
+  }
+}
+
+/**
+ * The default edit-metadata port, for tests that are not about custom fields.
+ */
+export class UnreachableEditMetadata implements JiraEditMetadataPort {
+  async getEditableFields(): Promise<EditFieldMetadata[]> {
+    throw new Error("test reached the edit metadata port unexpectedly");
+  }
+}
+
+/**
+ * An issue's edit screen, served from a fixture.
+ *
+ * `fields` is mutable so a test can take a field off the screen, remove its
+ * `set` operation, change its type or rename an option between plan and apply -
+ * which is the whole of the revalidation story, and cannot be told with a
+ * frozen fixture.
+ *
+ * The default set mirrors what a real Jira actually returned: a multi-select
+ * with one option, a text field, a number field, a single-select, and two
+ * types JAM refuses.
+ */
+export class FakeEditMetadata implements JiraEditMetadataPort {
+  fields: EditFieldMetadata[];
+  readonly calls: string[] = [];
+
+  constructor(fields?: EditFieldMetadata[]) {
+    this.fields = fields ?? [
+      {
+        id: "customfield_10100",
+        name: "Notes",
+        required: false,
+        operations: ["set"],
+        schema: { type: "string", custom: "textfield" },
+      },
+      {
+        id: "customfield_10016",
+        name: "Story Points",
+        required: false,
+        operations: ["set"],
+        schema: { type: "number", custom: "float" },
+      },
+      {
+        id: "customfield_10200",
+        name: "Category",
+        required: false,
+        operations: ["set"],
+        schema: { type: "option", custom: "select" },
+        allowedValues: [
+          { id: "10012", label: "Backend" },
+          { id: "10013", label: "Frontend" },
+        ],
+      },
+      {
+        id: "customfield_10021",
+        name: "Flagged",
+        required: false,
+        operations: ["add", "set", "remove"],
+        schema: { type: "array", items: "option", custom: "multicheckboxes" },
+        allowedValues: [
+          { id: "10019", label: "Impediment" },
+          { id: "10020", label: "Blocked" },
+        ],
+      },
+      {
+        id: "customfield_10015",
+        name: "Start date",
+        required: false,
+        operations: ["set"],
+        schema: { type: "date", custom: "datepicker" },
+      },
+      {
+        id: "customfield_10019",
+        name: "Rank",
+        required: false,
+        operations: ["set"],
+        schema: { type: "any", custom: "gh-lexo-rank" },
+      },
+      {
+        id: "customfield_10300",
+        name: "Read Only Notes",
+        required: false,
+        operations: ["set"],
+        schema: { type: "string", custom: "textfield" },
+      },
+    ];
+  }
+
+  /** Replace one field's metadata, or drop it from the screen with undefined. */
+  set(id: string, next: EditFieldMetadata | undefined): void {
+    this.fields = this.fields.filter((f) => f.id !== id);
+    if (next) this.fields.push(next);
+  }
+
+  find(id: string): EditFieldMetadata | undefined {
+    return this.fields.find((f) => f.id === id);
+  }
+
+  async getEditableFields(issueKey: string): Promise<EditFieldMetadata[]> {
+    this.calls.push(issueKey);
+    return this.fields;
   }
 }
 

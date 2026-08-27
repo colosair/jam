@@ -1,12 +1,18 @@
 import type { JamDeps } from "../deps.js";
 import type { FullIssueContext } from "../domain/context.js";
 import { JamError, toJamError } from "../domain/errors.js";
-import type { ExistingIssueWritePlan, WriteApplyReceipt } from "../domain/write.js";
+import type {
+  CustomFieldKind,
+  CustomFieldValueView,
+  ExistingIssueWritePlan,
+  WriteApplyReceipt,
+} from "../domain/write.js";
 import { readModeAfterWrite } from "../policy/consistency-policy.js";
 import { assertAssignable } from "../policy/assignee-policy.js";
+import { assertCustomFieldUnchanged } from "../policy/custom-field-policy.js";
 import { assertUnchanged } from "../policy/write-policy.js";
 import { applyCreateIssue } from "./apply-create-issue.js";
-import { readIssue } from "./plan-write.js";
+import { currentCustomFieldView, readIssue } from "./plan-write.js";
 
 export type ApplyWriteRequest = { planId: string };
 
@@ -79,14 +85,27 @@ export async function applyWritePlan(
  * own state, which `assertUnchanged` already compared.
  */
 async function revalidate(deps: JamDeps, plan: ExistingIssueWritePlan): Promise<void> {
-  if (plan.mutation.kind !== "assignee") return;
+  if (plan.mutation.kind === "assignee") {
+    const target = plan.intendedAfter["assignee"] as { accountId: string; displayName: string };
+    assertAssignable(
+      plan.issueKey,
+      target,
+      await deps.jiraAssignees.isAssignable(plan.issueKey, plan.mutation.accountId),
+    );
+    return;
+  }
 
-  const target = plan.intendedAfter["assignee"] as { accountId: string; displayName: string };
-  assertAssignable(
-    plan.issueKey,
-    target,
-    await deps.jiraAssignees.isAssignable(plan.issueKey, plan.mutation.accountId),
-  );
+  if (plan.mutation.kind === "custom-field" && plan.customFieldRequirements) {
+    // A field can be taken off a screen, lose its `set` operation, change type
+    // or have an option renamed without the issue's own revision moving, so
+    // `assertUnchanged` cannot see any of it. These are the premises the plan
+    // actually rested on, re-derived.
+    assertCustomFieldUnchanged(
+      plan.issueKey,
+      plan.customFieldRequirements,
+      await deps.jiraEditMetadata.getEditableFields(plan.issueKey),
+    );
+  }
 }
 
 /**
@@ -113,6 +132,14 @@ async function mutate(deps: JamDeps, plan: ExistingIssueWritePlan): Promise<{ co
         return {};
       case "assignee":
         await deps.jiraWrite.assignIssue(plan.issueKey, plan.mutation.accountId);
+        return {};
+      case "custom-field":
+        // The ordinary issue edit endpoint. A custom field is a field; what
+        // made it need its own operation was deciding whether it may be
+        // written and in what shape, and that is already settled here.
+        await deps.jiraWrite.updateIssue(plan.issueKey, {
+          [plan.mutation.fieldId]: plan.mutation.value,
+        });
         return {};
       case "create":
         // Unreachable: a create plan is routed to applyCreateIssue above. The
@@ -153,7 +180,11 @@ function isAmbiguous(err: JamError): boolean {
  * ours.
  */
 async function verify(deps: JamDeps, plan: ExistingIssueWritePlan): Promise<Record<string, unknown>> {
-  const snapshot = await readIssue(deps, plan.issueKey);
+  const snapshot = await readIssue(
+    deps,
+    plan.issueKey,
+    plan.mutation.kind === "custom-field" ? [plan.mutation.fieldId] : [],
+  );
   const issue = snapshot.issue;
 
   if (plan.mutation.kind === "assignee") {
@@ -190,6 +221,25 @@ async function verify(deps: JamDeps, plan: ExistingIssueWritePlan): Promise<Reco
     return { comments: comments.length, commentAdded: wanted };
   }
 
+  if (plan.mutation.kind === "custom-field" && plan.customFieldRequirements) {
+    const requirements = plan.customFieldRequirements;
+    const expected = plan.intendedAfter["customField"] as CustomFieldValueView;
+    const observedValue = currentCustomFieldView(
+      { id: requirements.fieldId, name: requirements.fieldName },
+      requirements.kind,
+      snapshot.customFieldValues?.[requirements.fieldId],
+    );
+
+    if (!sameCustomFieldValue(requirements.kind, expected.value, observedValue.value)) {
+      throw verificationFailed(
+        plan,
+        { customField: expected },
+        { customField: observedValue },
+      );
+    }
+    return { customField: observedValue };
+  }
+
   const observed = observedFor(plan, issue);
   for (const [field, expected] of Object.entries(plan.intendedAfter)) {
     if (!sameValue(observed[field], expected)) {
@@ -223,6 +273,34 @@ function observedFor(plan: ExistingIssueWritePlan, issue: FullIssueContext): Rec
     }
   }
   return observed;
+}
+
+/**
+ * Did the field end up holding what was planned?
+ *
+ * Options are compared on their ids, never on their labels - an option is
+ * identified by its id, and a label is what a person reads. For a multi-select
+ * the comparison is set-wise: Jira is free to return the same selection in a
+ * different order, and that is not a different selection.
+ */
+function sameCustomFieldValue(
+  kind: CustomFieldKind,
+  expected: CustomFieldValueView["value"],
+  observed: CustomFieldValueView["value"],
+): boolean {
+  if (kind === "multi-option") {
+    const ids = (v: CustomFieldValueView["value"]) =>
+      (Array.isArray(v) ? v.map((o) => o.id) : []).sort();
+    const a = ids(expected);
+    const b = ids(observed);
+    return a.length === b.length && a.every((id, i) => id === b[i]);
+  }
+  if (kind === "single-option") {
+    const id = (v: CustomFieldValueView["value"]) =>
+      v && typeof v === "object" && !Array.isArray(v) ? v.id : undefined;
+    return id(expected) === id(observed);
+  }
+  return expected === observed;
 }
 
 function sameValue(observed: unknown, expected: unknown): boolean {

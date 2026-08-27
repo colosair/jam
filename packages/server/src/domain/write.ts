@@ -26,6 +26,7 @@ export const EXISTING_ISSUE_OPERATIONS = [
   "field.update",
   "status.transition",
   "assignee.update",
+  "custom-field.update",
 ] as const;
 
 /** The operations the public MCP surface accepts. Nothing else is reachable. */
@@ -119,6 +120,7 @@ export type WriteInput =
   | FieldUpdateInput
   | StatusTransitionInput
   | AssigneeUpdateInput
+  | CustomFieldUpdateInput
   | CreateIssueInput;
 
 /** An issue type as Jira offers it for one project, right now. */
@@ -165,6 +167,87 @@ export type CreateSchemaRequirements = {
    */
   resolvedValues: { fieldId: string; requested: string; resolved: string }[];
 };
+
+/**
+ * One field on an issue's edit screen, as Jira describes it.
+ *
+ * Normalized at the adapter: `operations` and `schema` come straight from
+ * Jira's own vocabulary because they are the vocabulary the decision is made
+ * in, but nothing else of the raw document travels.
+ */
+export type EditFieldMetadata = {
+  /** Jira's field id, e.g. `customfield_10021`. */
+  id: string;
+  name: string;
+  required: boolean;
+  /** What Jira says can be done to this field: `set`, `add`, `remove`, ... */
+  operations: string[];
+  schema: {
+    type: string;
+    /** Element type, for `type: "array"`. */
+    items?: string;
+    /** The custom field's implementation key, when it is a custom field. */
+    custom?: string;
+    customId?: number;
+  };
+  /** Present only where Jira constrains the value. Absent is not empty. */
+  allowedValues?: EditFieldOption[];
+};
+
+/**
+ * One option Jira offers for a constrained field.
+ *
+ * `id` is the identity and `label` is what a person reads - the same split as
+ * a user's accountId and display name, and for the same reason: an option can
+ * be renamed without becoming a different option, and two options could carry
+ * the same label.
+ */
+export type EditFieldOption = {
+  id: string;
+  label: string;
+};
+
+/**
+ * The custom field value families JAM can write.
+ *
+ * Narrow on purpose. Each of these has an unambiguous wire shape that JAM can
+ * produce from a plain caller value and compare after the fact. Everything
+ * else - dates needing a timezone policy, rich text needing ADF, user and
+ * group pickers needing identity resolution, app-owned fields with private
+ * semantics - is refused rather than guessed at.
+ */
+export const CUSTOM_FIELD_KINDS = ["text", "number", "single-option", "multi-option"] as const;
+
+export type CustomFieldKind = (typeof CUSTOM_FIELD_KINDS)[number];
+
+export type CustomFieldUpdateInput = {
+  /** A configured field id, or a configured writable field name. */
+  field: string;
+  value: string | number | string[];
+};
+
+/**
+ * What a custom-field plan depends on, recorded so apply can check it again.
+ *
+ * The issue's revision does not cover any of this: a field can be taken off a
+ * screen, lose its `set` operation, change type, or have an option renamed
+ * without the issue itself being touched. So these premises are frozen
+ * alongside `baseUpdated`, and re-derived before the write.
+ */
+export type CustomFieldRequirements = {
+  fieldId: string;
+  fieldName: string;
+  kind: CustomFieldKind;
+  schema: { type: string; items?: string; custom?: string };
+  /** Options resolved from Jira's allowed list, for the option kinds. */
+  resolvedOptions?: EditFieldOption[];
+};
+
+/** A custom field value as a receipt shows it - reviewable, not a Jira payload. */
+export type CustomFieldValueView =
+  | { id: string; name: string; value: string | number | null }
+  | { id: string; name: string; value: EditFieldOption | null }
+  | { id: string; name: string; value: EditFieldOption[] };
 
 /** A transition as Jira currently offers it for one issue. */
 export type JiraTransition = {
@@ -213,6 +296,11 @@ export type ExistingIssueWritePlan = WritePlanCommon & {
    * `undefined` means the issue was unassigned.
    */
   baseAssigneeAccountId?: string;
+  /**
+   * What this plan assumed about a custom field's configuration. Present only
+   * for `custom-field.update`; apply re-derives each premise before writing.
+   */
+  customFieldRequirements?: CustomFieldRequirements;
 };
 
 /**
@@ -244,6 +332,7 @@ export type WriteMutation =
   | { kind: "fields"; fields: Record<string, unknown> }
   | { kind: "transition"; transitionId: string }
   | { kind: "assignee"; accountId: string }
+  | { kind: "custom-field"; fieldId: string; value: unknown }
   | { kind: "create"; fields: Record<string, unknown> };
 
 /** What `jira_write_plan` returns. The mutation itself is not exposed. */

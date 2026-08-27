@@ -10,6 +10,7 @@ import type { CredentialPort } from "./ports/credentials.port.js";
 import type { JiraReadPort } from "./ports/jira-read.port.js";
 import type { JiraAssigneeResolutionPort } from "./ports/jira-assignee-resolution.port.js";
 import type { JiraCreateMetadataPort } from "./ports/jira-create-metadata.port.js";
+import type { JiraEditMetadataPort } from "./ports/jira-edit-metadata.port.js";
 import type { JiraWritePort } from "./ports/jira-write.port.js";
 import { WritePlanStore } from "./application/write-plan-store.js";
 import type { TelemetryPort } from "./ports/telemetry.port.js";
@@ -42,6 +43,12 @@ export type JamDeps = {
    */
   jiraAssignees: JiraAssigneeResolutionPort;
   /**
+   * What Jira will let this account change on one issue. A fifth read-shaped
+   * port, for the same reason as the third and fourth: it mutates nothing, and
+   * it answers a question about a configuration rather than about an issue.
+   */
+  jiraEditMetadata: JiraEditMetadataPort;
+  /**
    * Plans awaiting apply. Lives for the life of this server process - see
    * WritePlanStore for why it is not persisted.
    */
@@ -61,6 +68,8 @@ export type BuildDepsOptions = {
   jiraCreateMetadata?: JiraCreateMetadataPort;
   /** Injected by tests so user resolution never reaches a real directory. */
   jiraAssignees?: JiraAssigneeResolutionPort;
+  /** Injected by tests so edit metadata comes from a fixture, not a site. */
+  jiraEditMetadata?: JiraEditMetadataPort;
   /** Injected by tests to bypass the real process/registry credential lookup. */
   credentials?: CredentialPort;
   /**
@@ -134,6 +143,14 @@ export async function buildDeps(options: BuildDepsOptions = {}): Promise<JamDeps
     jiraAssignees = new JiraCloudAssigneeResolutionAdapter(credentials);
   }
 
+  let jiraEditMetadata = options.jiraEditMetadata;
+  if (!jiraEditMetadata) {
+    const { JiraCloudEditMetadataAdapter } = await import(
+      "./adapters/jira-cloud/jira-edit-metadata.adapter.js"
+    );
+    jiraEditMetadata = new JiraCloudEditMetadataAdapter(credentials);
+  }
+
   return {
     config: resolved.config,
     configPath: resolved.configPath,
@@ -142,6 +159,7 @@ export async function buildDeps(options: BuildDepsOptions = {}): Promise<JamDeps
     jiraWrite,
     jiraCreateMetadata,
     jiraAssignees,
+    jiraEditMetadata,
     writePlans: new WritePlanStore(),
     cache: new NoopCache(),
     telemetry,

@@ -14,6 +14,7 @@ Operations on an issue that already exists - these need \`key\`:
 - field.update       input: { "summary"?, "priority"?, "labels"?, "components"? }
 - status.transition  input: { "status": "Done" }     JAM asks Jira which transitions exist and matches yours
 - assignee.update    input: { "assignee": "..." }     a display name or an accountId; JAM resolves it against Jira's own directory
+- custom-field.update input: { "field": "...", "value": ... }  one custom field the project opted in
 
 Creating an issue - no \`key\`, because there is no issue yet:
 - issue.create       input: { "issueType": "Task", "summary": "...", "description"?, "priority"?, "labels"?, "components"? }
@@ -21,6 +22,8 @@ Creating an issue - no \`key\`, because there is no issue yet:
 issue.create goes into the project this workspace is bound to; the project is not a parameter. Planning reads Jira's create schema for that project first, so an issue type Jira does not offer, a priority or component outside its allowed values, and a project whose create screen requires a field JAM cannot set are all refused here rather than attempted. \`description\` is plain text, like a comment. Not settable in this version: assignee, reporter, parent, custom fields, attachments.
 
 assignee.update never sends the name you pass. JAM searches Jira's user directory, and assigns only when exactly one user matches your string exactly - an exact display name (case-insensitive) or an accountId. A partial match is Jira reporting a similarity, not identifying a person, so several matches or none come back as a refusal with the candidates attached: name one exactly, or pass their accountId. JAM also checks Jira offers that person as an assignee for this issue, before planning and again before writing, and confirms the result by accountId rather than by name. Unassigning, and setting an assignee while creating, are not in this version.
+
+custom-field.update changes one custom field, and only one a team has opted in: the field's exact id must carry "writable: true" in the project's .jira-agent/project.yaml. Being readable does not make a field writable. "field" is that id or its configured name, matched exactly - no partial matches. JAM then asks Jira's edit metadata whether the field is settable on this issue for this account, and what type it is. Supported types are single-line text (string), number, single-select (string naming an option) and multi-select (array of strings). Anything else - dates, rich text, user or group pickers, app-owned fields - is refused rather than attempted. Types are not converted: "5" is not 5. Options are matched exactly against what Jira offers and written by option id. Clearing a field is not supported, so an empty string or an empty array is refused.
 
 Writes are limited to the Jira project this workspace is bound to; a key from another project is refused rather than attempted.
 
@@ -69,6 +72,19 @@ export function registerJiraWritePlan(server: McpServer, deps: JamDeps): void {
               .optional()
               .describe(
                 "assignee.update: who to assign, as an exact display name or an accountId. Not settable through field.update.",
+              ),
+            field: z
+              .string()
+              .min(1)
+              .optional()
+              .describe(
+                "custom-field.update: the custom field, as its Jira id (customfield_10016) or its configured name. Must be writable in this project's config.",
+              ),
+            value: z
+              .union([z.string(), z.number(), z.array(z.string())])
+              .optional()
+              .describe(
+                "custom-field.update: the value. A string for text, a number for numeric, a string naming an option for single-select, an array of strings for multi-select.",
               ),
             issueType: z
               .string()

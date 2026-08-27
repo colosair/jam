@@ -43,6 +43,16 @@ export type GetIssueResult = {
    * Absent when the issue is unassigned, or when the field was not requested.
    */
   assigneeAccountId?: string;
+  /**
+   * Raw custom field values, keyed by field id, exactly as Jira returned them.
+   *
+   * Here rather than on the issue for the same reason as the accountId: only
+   * the write plane needs it. `FullIssueContext.customFields` is the mapped,
+   * whitelisted view the read tools show; verifying a write needs the value in
+   * the form Jira stores it, option ids included, before anything shortens it
+   * to something a person reads.
+   */
+  customFieldValues?: Record<string, unknown>;
   responseBytes: number;
 };
 

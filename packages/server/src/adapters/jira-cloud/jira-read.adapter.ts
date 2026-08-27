@@ -71,12 +71,22 @@ export class JiraCloudReadAdapter implements JiraReadPort {
     // Read straight off the raw payload rather than through the mapper: the
     // mapper's job is the shape the read tools see, and this identity is only
     // for the write plane. Raw DTOs still stop here.
-    const assignee = (data.fields as { assignee?: { accountId?: unknown } } | undefined)?.assignee;
+    const raw = data.fields as Record<string, unknown> | undefined;
+    const assignee = raw?.["assignee"] as { accountId?: unknown } | undefined;
     const accountId = typeof assignee?.accountId === "string" ? assignee.accountId : undefined;
+
+    // Only the ids that were asked for, and only when some were: a caller that
+    // did not request a custom field gets no entry rather than an empty object
+    // it has to tell apart from a field that is genuinely unset.
+    const customFieldValues: Record<string, unknown> = {};
+    for (const field of req.fields) {
+      if (field.startsWith("customfield_")) customFieldValues[field] = raw?.[field] ?? null;
+    }
 
     return {
       issue: mapIssueWithMeta(data, this.config).issue,
       ...(accountId ? { assigneeAccountId: accountId } : {}),
+      ...(Object.keys(customFieldValues).length > 0 ? { customFieldValues } : {}),
       responseBytes: bytes,
     };
   }
