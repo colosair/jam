@@ -210,14 +210,41 @@ npx --yes @jam-mcp/bootstrap@1.3.1 setup --agent
 Same refusal, same absence of output. **A0 = blocked, for the unwrapped
 canonical command.**
 
+### 2026-08-28 — the documented rule lets the same command through
+
+Same machine and host as above, `autoMode.classifyAllShell` still unset. One
+rule added, in the user's own settings (`~/.claude/settings.json`), and nothing
+broader:
+
+```text
+Bash(npx --yes @jam-mcp/bootstrap@1.3.1 setup --agent)
+```
+
+Then the same command, unchanged:
+
+```text
+npx --yes @jam-mcp/bootstrap@1.3.1 setup --agent
+```
+
+The host allowed it, JAM started, and the first thing it said was
+`JAM_PROJECT_SELECTION_REQUIRED` - a JAM human boundary, which is Gate B's
+business and no longer the host's. **A1 = pass**, measured against 1.3.1 before
+1.3.2 was published, so the contract this release documents was known to work
+before it was written down as the fallback.
+
+Note what the exact rule had to match: the command with nothing around it. The
+refused invocation in the entry above carried `2>&1 | tail -60`, and no rule
+written for the canonical command would have matched that. Same host, same
+day, same package - the difference was the wrapper.
+
 <!-- release-check: historical-evidence:end -->
 
 What that establishes, and what it does not: a pristine auto-mode host can
 refuse the canonical bootstrap on its own judgement, with the command in its
 simplest possible form. It is therefore not a wrapper defect, and no rewriting
-of the command is the fix. What remains for JAM to guarantee is A1 — that the
-exact, narrow, user-local rule this repository documents does let the same
-command through.
+of the command is the fix. What JAM guarantees instead is A1, and the second
+entry above is that guarantee measured rather than asserted: the exact, narrow,
+user-local rule this repository documents does let the same command through.
 
 The wrapper is still worth forbidding, for a separate and now-documented
 reason: a host matches permission rules against the whole command, and a pipe
