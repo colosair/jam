@@ -43,10 +43,18 @@ Show the user what the plan says before applying it. The plan's `before` and
 `intendedAfter` are the whole point of the split: they are what makes the change
 reviewable while it is still cheap to abandon.
 
-Five operations, and nothing else is writable: `comment.add` (plain text),
+Six operations, and nothing else is writable: `comment.add` (plain text),
 `field.update` (summary, priority, labels, components), `status.transition`,
-`assignee.update`, and `issue.create`. Writes are confined to the configured
-Jira project.
+`assignee.update`, `custom-field.update`, and `issue.create`. Writes are
+confined to the configured Jira project.
+
+`custom-field.update` changes one custom field, and needs three permissions to
+line up that do not imply one another: the team opted that exact field in with
+`writable: true` (**being readable does not make a field writable**, and a
+whitelist written before this release grants no writes), Jira offers the field
+with `set` on this issue for this account, and the field is a type JAM writes -
+single-line text, number, single-select, multi-select. Anything else is refused
+rather than attempted, and types are never converted: `"5"` is not `5`.
 
 Handle these failures as follows, and do not collapse them into "it failed":
 
