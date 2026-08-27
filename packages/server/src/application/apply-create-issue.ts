@@ -2,7 +2,9 @@ import type { JamDeps } from "../deps.js";
 import type { FullIssueContext } from "../domain/context.js";
 import { JamError, toJamError } from "../domain/errors.js";
 import type { CreateIssueInput, CreateIssueWritePlan, WriteApplyReceipt } from "../domain/write.js";
+import { canonicalizePlainText } from "../domain/adf.js";
 import { assertSchemaUnchanged } from "../policy/create-policy.js";
+import { projectKeyOf } from "../policy/write-policy.js";
 import { readIssue } from "./plan-write.js";
 
 /**
@@ -131,7 +133,12 @@ function isAmbiguous(err: JamError): boolean {
 /**
  * Read the created issue and check it is the one the plan described.
  *
- * Only the fields the create contract lets a caller ask for are compared.
+ * Every field in `intendedAfter` is checked, because `intendedAfter` is also
+ * what the plan receipt promised `verification.expects` would show. A field
+ * the receipt names and the check skips is worse than one it never named: it
+ * reports `verified: true` about something nobody looked at.
+ *
+ * Only the fields the create contract lets a caller ask for are in there.
  * Jira fills in a great deal on its own - reporter, created, status, whatever
  * a project's automation adds - and none of that was requested, so requiring
  * it to match something would be inventing an expectation nobody stated.
@@ -141,6 +148,20 @@ async function verify(
   plan: CreateIssueWritePlan,
   issueKey: string,
 ): Promise<Record<string, unknown>> {
+  // Where the issue landed is part of what was intended. The workspace binding
+  // is the whole of JAM's write scope, so a key from another project coming
+  // back from a create is the one outcome that must never be reported as the
+  // create that was planned.
+  const createdProject = projectKeyOf(issueKey);
+  if (createdProject !== plan.projectKey) {
+    throw verificationFailed(
+      plan,
+      issueKey,
+      { project: plan.projectKey },
+      { project: createdProject ?? issueKey },
+    );
+  }
+
   const issue = await readIssue(deps, issueKey);
 
   const observed: Record<string, unknown> = {};
@@ -149,35 +170,32 @@ async function verify(
   }
 
   for (const [field, expected] of Object.entries(plan.intendedAfter)) {
-    // Description is the one requested field a direct read does not return in
-    // a comparable form: it comes back as a document, and the request was
-    // plain text. Its presence is checked, not its rendering - a round-trip
-    // comparison would fail on Jira's own formatting rather than on anything
-    // being wrong.
-    if (field === "description") continue;
     if (!sameValue(observed[field], expected)) {
-      throw new JamError(
-        "JAM_WRITE_VERIFICATION_FAILED",
-        `Jira created ${issueKey}, but a direct read does not show what the plan intended. A workflow rule or a project automation may have altered the issue as it was created.`,
-        {
-          issueKey,
-          operation: plan.operation,
-          expected: plan.intendedAfter,
-          observed,
-        },
-      );
+      throw verificationFailed(plan, issueKey, plan.intendedAfter, observed);
     }
   }
 
   return observed;
 }
 
+/**
+ * The created issue's value for one requested field.
+ *
+ * The description is canonicalized on the way out, the same way the plan
+ * canonicalized what was asked for. Jira stores a document and renders it back
+ * as text, so the two are never byte-identical - and a comparison that failed
+ * on Jira's own formatting would be reporting a problem that is not there.
+ */
 function observedValue(issue: FullIssueContext, field: string): unknown {
   switch (field) {
     case "issueType":
       return issue.issueType;
     case "summary":
       return issue.summary;
+    case "description":
+      return issue.description === undefined
+        ? undefined
+        : canonicalizePlainText(issue.description);
     case "priority":
       return issue.priority;
     case "labels":
@@ -187,6 +205,26 @@ function observedValue(issue: FullIssueContext, field: string): unknown {
     default:
       return undefined;
   }
+}
+
+/**
+ * The issue exists. Say so, and say not to make another one.
+ *
+ * This is the failure an agent is most likely to answer by trying again, and
+ * trying again is the one thing that turns a wrong issue into two wrong
+ * issues.
+ */
+function verificationFailed(
+  plan: CreateIssueWritePlan,
+  issueKey: string,
+  expected: Record<string, unknown>,
+  observed: Record<string, unknown>,
+): JamError {
+  return new JamError(
+    "JAM_WRITE_VERIFICATION_FAILED",
+    `Jira created ${issueKey}, but a direct read does not show what the plan intended. A workflow rule or a project automation may have altered the issue as it was created. The issue exists - look at it and fix it there, or delete it. Do not create another one.`,
+    { issueKey, operation: plan.operation, expected, observed },
+  );
 }
 
 function sameValue(observed: unknown, expected: unknown): boolean {

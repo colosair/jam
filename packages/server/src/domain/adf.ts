@@ -15,10 +15,7 @@
  * interpreted, so text containing `*` or `#` says what it says.
  */
 export function textToAdf(text: string): unknown {
-  const paragraphs = text
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter(Boolean);
+  const paragraphs = toParagraphs(text);
 
   return {
     type: "doc",
@@ -28,4 +25,38 @@ export function textToAdf(text: string): unknown {
       content: [{ type: "text", text: block }],
     })),
   };
+}
+
+/**
+ * The text as it will exist once Jira has it.
+ *
+ * A write is only verified if what a direct read shows can be compared to what
+ * was asked for - and for a rich-text field those two are never byte-identical.
+ * The caller's string becomes a document, Jira stores the document, and reading
+ * it back renders a document into text again. Blank-line runs collapse, block
+ * edges lose their whitespace, a trailing newline disappears.
+ *
+ * None of that changes what the description says, so comparing raw strings
+ * would fail every time. Comparing canonical forms fails only when the text
+ * actually differs.
+ *
+ * Deliberately the same normalization `textToAdf` performs, from the same
+ * place: "what JAM sends" and "what JAM will accept as proof it arrived" must
+ * not be able to drift into two answers.
+ */
+export function canonicalizePlainText(text: string): string {
+  return toParagraphs(text).join("\n\n");
+}
+
+/**
+ * Blank lines separate paragraphs; everything else is literal.
+ *
+ * A single newline inside a block survives - it is a line break the author
+ * wrote, and ADF round-trips it - so only the edges of each block are trimmed.
+ */
+function toParagraphs(text: string): string[] {
+  return text
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
 }

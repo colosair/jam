@@ -113,10 +113,21 @@ export async function planWrite(
 export async function readIssue(deps: JamDeps, issueKey: string): Promise<FullIssueContext> {
   const { issues } = await deps.jira.getIssues({
     keys: [issueKey],
-    // `issuetype` is here for creation's verification step, which has to
-    // confirm the issue Jira made is the type that was asked for. It costs
-    // nothing on the other operations.
-    fields: ["summary", "status", "issuetype", "priority", "labels", "components", "updated"],
+    // `issuetype` and `description` are here for creation's verification step,
+    // which has to confirm the issue Jira made is the one that was asked for.
+    // A field a plan promises to check has to be a field this read returns -
+    // otherwise the check silently passes on `undefined`. They cost nothing on
+    // the other operations, which do not compare them.
+    fields: [
+      "summary",
+      "status",
+      "issuetype",
+      "description",
+      "priority",
+      "labels",
+      "components",
+      "updated",
+    ],
   });
 
   const issue = issues[0];

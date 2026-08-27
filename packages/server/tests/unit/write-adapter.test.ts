@@ -256,3 +256,23 @@ describe("JiraCloudWriteAdapter.createIssue", () => {
     });
   });
 });
+
+describe("canonicalizePlainText", () => {
+  it("is what textToAdf does to the text, and nothing more", async () => {
+    // The two have to agree, because one decides what JAM sends and the other
+    // decides what JAM will accept as proof it arrived.
+    const { canonicalizePlainText } = await import("../../src/domain/adf.js");
+
+    const raw = "  One.\n\n\n\nTwo.   \n";
+    const doc = textToAdf(raw) as { content: { content: { text: string }[] }[] };
+
+    expect(canonicalizePlainText(raw)).toBe("One.\n\nTwo.");
+    expect(doc.content.map((p) => p.content[0]!.text)).toEqual(["One.", "Two."]);
+  });
+
+  it("keeps a single newline, which is a line break the author wrote", async () => {
+    const { canonicalizePlainText } = await import("../../src/domain/adf.js");
+
+    expect(canonicalizePlainText("a\nb")).toBe("a\nb");
+  });
+});
