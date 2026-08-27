@@ -1,6 +1,6 @@
 {
   "name": "@jam-mcp/server",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "JAM (Jira Agent MCP) - agent-facing Jira access layer: MCP server, setup core, and CLI",
   "keywords": [
     "jira",
@@ -41,7 +41,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@jam-mcp/launcher": "1.2.0",
+    "@jam-mcp/launcher": "1.3.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
