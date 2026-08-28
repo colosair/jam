@@ -26,6 +26,14 @@ import {
 const windows = process.platform === "win32";
 const describeWindows = windows ? describe : describe.skip;
 
+/**
+ * Starting powershell.exe is measured in seconds, and the first one in a run
+ * pays for loading the module too - on a cold CI runner that has been seen at
+ * nearly nine. The default 5s budget is written for in-process work and says
+ * nothing about whether this contract holds.
+ */
+const PROCESS_BUDGET = 60_000;
+
 const SECRET = "atatt-not-a-real-token-0123456789";
 const values = (over: Partial<StoredCredentials> = {}): StoredCredentials => ({
   baseUrl: "https://example.atlassian.net",
@@ -90,7 +98,7 @@ describeWindows("Windows DPAPI store, against a real powershell.exe", () => {
 
     expect(existsSync(blob()), "no DPAPI file was written").toBe(true);
     expect(store.read()).toEqual(values());
-  });
+  }, PROCESS_BUDGET);
 
   it("round-trips values that are not ASCII", () => {
     const { run } = realRun();
@@ -100,7 +108,7 @@ describeWindows("Windows DPAPI store, against a real powershell.exe", () => {
     store.write(korean);
 
     expect(store.read()).toEqual(korean);
-  });
+  }, PROCESS_BUDGET);
 
   it("clear removes the file, and a read after it finds nothing", () => {
     const { run } = realRun();
@@ -111,7 +119,7 @@ describeWindows("Windows DPAPI store, against a real powershell.exe", () => {
 
     expect(existsSync(blob())).toBe(false);
     expect(store.read()).toBeUndefined();
-  });
+  }, PROCESS_BUDGET);
 
   it("keeps the token out of argv, out of the file, and out of the output", () => {
     const { run, calls, outputs } = realRun();
@@ -131,7 +139,7 @@ describeWindows("Windows DPAPI store, against a real powershell.exe", () => {
     expect(readFileSync(blob(), "utf8"), "the stored file holds the token in clear").not.toContain(
       SECRET,
     );
-  });
+  }, PROCESS_BUDGET);
 });
 
 /**
@@ -161,7 +169,7 @@ describeWindows("PowerShell output encoding", () => {
     );
 
     expect(withDeclaration).toContain(marker);
-  });
+  }, PROCESS_BUDGET);
 
   it("the store's own scripts carry that declaration", () => {
     const { run, calls } = realRun();
@@ -171,5 +179,5 @@ describeWindows("PowerShell output encoding", () => {
 
     const script = calls.at(-1)!.args.join(" ");
     expect(script).toContain("[Console]::OutputEncoding=[Text.Encoding]::UTF8");
-  });
+  }, PROCESS_BUDGET);
 });
