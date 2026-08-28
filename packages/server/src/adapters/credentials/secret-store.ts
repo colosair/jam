@@ -189,8 +189,22 @@ function linuxStore(run: RunFn): SecretStore {
  * Kept separate from ~/.jam/config.yaml, which declares itself hand-editable
  * and free of credentials.
  */
-/** Both scripts need DPAPI, and both must survive a rewritten PSModulePath. */
-const IMPORT_SECURITY = "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop;";
+/**
+ * Both scripts need DPAPI, and both must survive a host that rewrote where
+ * PowerShell looks for modules.
+ *
+ * A CI runner does exactly that - it prepends its own paths, including ones
+ * belonging to a different PowerShell edition, and then Windows PowerShell 5.1
+ * either cannot resolve `ConvertTo-SecureString` at all or trips over type data
+ * from a module that was never meant for it. Neither failure says anything
+ * about credentials, so both look like a JAM bug to whoever reads them.
+ *
+ * So the child starts from the machine's own module path and asks for the
+ * module by name. This changes nothing outside that one short-lived process.
+ */
+const IMPORT_SECURITY =
+  "$env:PSModulePath=[Environment]::GetEnvironmentVariable('PSModulePath','Machine');" +
+  "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop;";
 
 function windowsStore(run: RunFn): SecretStore {
   const dir = join(homedir(), ".jam");
