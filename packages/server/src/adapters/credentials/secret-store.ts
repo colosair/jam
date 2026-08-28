@@ -235,6 +235,19 @@ const UTF8_OUTPUT =
   "[Console]::OutputEncoding=[Text.Encoding]::UTF8;" +
   "$OutputEncoding=[Text.Encoding]::UTF8;";
 
+/**
+ * Read stdin as UTF-8, by saying so on the stream rather than on the console.
+ *
+ * `[Console]::In` on Windows PowerShell 5.1 is already bound to the console
+ * input code page by the time a `-Command` script could change it, so a value
+ * with non-ASCII in it - a Jira account under a Korean name, say - arrived
+ * mangled and was then encrypted mangled. Opening the standard input stream
+ * with an explicit encoding sidesteps that entirely.
+ */
+const READ_STDIN_UTF8 =
+  "$in=(New-Object IO.StreamReader(" +
+  "[Console]::OpenStandardInput(),[Text.Encoding]::UTF8)).ReadToEnd();";
+
 function windowsStore(run: RunFn): SecretStore {
   const dir = join(homedir(), ".jam");
   const path = join(dir, "credentials.dpapi");
@@ -270,7 +283,7 @@ function windowsStore(run: RunFn): SecretStore {
     "-Command",
     UTF8_OUTPUT +
       IMPORT_SECURITY +
-      "$in=[Console]::In.ReadToEnd();" +
+      READ_STDIN_UTF8 +
       "$in | ConvertTo-SecureString -AsPlainText -Force |" +
       ` ConvertFrom-SecureString | Set-Content $env:${PATH_VAR} -NoNewline`,
   ];
