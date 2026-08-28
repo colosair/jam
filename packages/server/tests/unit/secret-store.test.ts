@@ -16,7 +16,7 @@ const stored: StoredCredentials = {
   apiToken: SECRET,
 };
 
-type Call = { command: string; args: string[]; input?: string };
+type Call = { command: string; args: string[]; input?: string; env?: Record<string, string> };
 
 /**
  * Records every command the store would run and answers from a script, so no
@@ -24,8 +24,13 @@ type Call = { command: string; args: string[]; input?: string };
  */
 function recorder(reply: (call: Call) => Partial<RunResult>) {
   const calls: Call[] = [];
-  const run: RunFn = (command, args, input) => {
-    const call: Call = { command, args, ...(input === undefined ? {} : { input }) };
+  const run: RunFn = (command, args, input, env) => {
+    const call: Call = {
+      command,
+      args,
+      ...(input === undefined ? {} : { input }),
+      ...(env === undefined ? {} : { env }),
+    };
     calls.push(call);
     return { status: 0, stdout: "", stderr: "", ...reply(call) };
   };
@@ -199,5 +204,49 @@ describe("SecretStoreCredentialSource", () => {
       JIRA_EMAIL: stored.email,
       JIRA_API_TOKEN: SECRET,
     });
+  });
+});
+
+describe.skipIf(process.platform !== "win32")("Windows store call contract", () => {
+  const values = { baseUrl: "https://example.atlassian.net", email: "u@example.com", apiToken: "tok-1" };
+
+  /**
+   * Pinned because the previous shape passed the path as a trailing argument
+   * with `-args`, which `powershell.exe -Command` does not turn into `$args` -
+   * and no injected-runner test could see it, because the fake answered 0.
+   */
+  it("hands PowerShell the file path in the environment, not in argv", () => {
+    const { store: s, calls } = store(() => ({ status: 0 }));
+
+    s.write(values);
+    const write = calls.at(-1)!;
+
+    expect(write.command).toBe("powershell");
+    expect(write.env?.["JAM_SECRET_FILE"]).toMatch(/credentials\.dpapi$/);
+    expect(write.args).not.toContain("-args");
+    expect(write.args.some((a) => a.includes("credentials.dpapi"))).toBe(false);
+    // The script reads the variable rather than interpolating the path.
+    expect(write.args.join(" ")).toContain("$env:JAM_SECRET_FILE");
+  });
+
+  it("sends the secret on stdin and nowhere else", () => {
+    const { store: s, calls } = store(() => ({ status: 0 }));
+
+    s.write(values);
+    const write = calls.at(-1)!;
+
+    expect(write.input).toBe(JSON.stringify(values));
+    expect(write.args.join(" ")).not.toContain("tok-1");
+    expect(JSON.stringify(write.env ?? {})).not.toContain("tok-1");
+  });
+
+  it("reads through the same variable, so a written file is findable", () => {
+    const { store: s, calls } = store(() => ({ status: 1 }));
+
+    s.read();
+
+    // read() short-circuits when the file is absent; with none written this
+    // asserts only that nothing was passed positionally when it does run.
+    for (const call of calls) expect(call.args).not.toContain("-args");
   });
 });

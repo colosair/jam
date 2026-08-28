@@ -33,8 +33,18 @@ export type RunResult = {
   error?: NodeJS.ErrnoException;
 };
 
-/** Injected by tests so the suite never touches a real keychain. */
-export type RunFn = (command: string, args: string[], input?: string) => RunResult;
+/**
+ * Injected by tests so the suite never touches a real keychain.
+ *
+ * `env` is merged over the inherited environment, and carries only values that
+ * are not secret - a file path, say. Secrets travel on stdin.
+ */
+export type RunFn = (
+  command: string,
+  args: string[],
+  input?: string,
+  env?: Record<string, string>,
+) => RunResult;
 
 export interface SecretStore {
   /** Shown by `jam auth login`. Names the mechanism, never a value. */
@@ -80,10 +90,16 @@ function account(): string {
   return userInfo().username;
 }
 
-function defaultRun(command: string, args: string[], input?: string): RunResult {
+function defaultRun(
+  command: string,
+  args: string[],
+  input?: string,
+  env?: Record<string, string>,
+): RunResult {
   const result = spawnSync(command, args, {
     encoding: "utf8",
     ...(input === undefined ? {} : { input }),
+    ...(env === undefined ? {} : { env: { ...process.env, ...env } }),
     // No shell: arguments are passed as an array, so nothing is re-parsed.
     windowsHide: true,
   });
@@ -209,22 +225,30 @@ const IMPORT_SECURITY =
 function windowsStore(run: RunFn): SecretStore {
   const dir = join(homedir(), ".jam");
   const path = join(dir, "credentials.dpapi");
-  // The path reaches PowerShell as an argument, never interpolated into the
-  // script text; the secret reaches it on stdin.
+
+  /**
+   * The path reaches PowerShell in an environment variable, never in argv and
+   * never interpolated into the script text.
+   *
+   * It used to ride as a trailing argument with `-args`, which does not work:
+   * `powershell.exe -Command` appends what follows to the command text rather
+   * than filling `$args` - that is `-File` semantics - so the script read
+   * `$args[0]` as `$null` and `Set-Content` refused the null path. Reading was
+   * broken the same way and failed quietly, since `Test-Path $null` is false.
+   *
+   * The variable holds a path, not a secret. The secret still reaches the
+   * process on stdin and appears nowhere else.
+   */
+  const PATH_VAR = "JAM_SECRET_FILE";
   const decrypt = [
     "-NoProfile",
     "-NonInteractive",
     "-Command",
-    // DPAPI lives in Microsoft.PowerShell.Security. It is normally loaded on
-    // demand, but a host that rewrites PSModulePath - a CI runner, a locked
-    // down profile - leaves the cmdlet unresolvable, and the failure names the
-    // module rather than anything about credentials. Ask for it by name.
     IMPORT_SECURITY +
-      "$p=$args[0]; if(!(Test-Path $p)){exit 1};" +
+      `$p=$env:${PATH_VAR}; if(!(Test-Path $p)){exit 1};` +
       "$s=Get-Content $p -Raw | ConvertTo-SecureString;" +
       "[Runtime.InteropServices.Marshal]::PtrToStringAuto(" +
       "[Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))",
-    "-args",
   ];
   const encrypt = [
     "-NoProfile",
@@ -233,21 +257,20 @@ function windowsStore(run: RunFn): SecretStore {
     IMPORT_SECURITY +
       "$in=[Console]::In.ReadToEnd();" +
       "$in | ConvertTo-SecureString -AsPlainText -Force |" +
-      " ConvertFrom-SecureString | Set-Content $args[0] -NoNewline",
-    "-args",
+      ` ConvertFrom-SecureString | Set-Content $env:${PATH_VAR} -NoNewline`,
   ];
 
   return {
     label: "Windows DPAPI (user-encrypted file)",
     read() {
       if (!existsSync(path)) return undefined;
-      const res = run("powershell", [...decrypt, path]);
+      const res = run("powershell", decrypt, undefined, { [PATH_VAR]: path });
       if (res.error || res.status !== 0) return undefined;
       return parse(res.stdout.trim());
     },
     write(values) {
       mkdirSync(dir, { recursive: true });
-      const res = run("powershell", [...encrypt, path], JSON.stringify(values));
+      const res = run("powershell", encrypt, JSON.stringify(values), { [PATH_VAR]: path });
       if (res.error?.code === "ENOENT") throw unavailable("powershell");
       if (res.status !== 0) throw new Error(`DPAPI write failed: ${res.stderr.trim()}`);
       try {

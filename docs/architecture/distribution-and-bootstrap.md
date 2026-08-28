@@ -203,6 +203,14 @@ is collected only through a masked prompt, never written to a repo, config file
 or shell history, and the child that carries it lives for one call. Replacing
 that needs a native API or OAuth, which D9 deliberately does not add.
 
+On Linux and Windows the token goes in on stdin. The Windows script also needs
+the path of the encrypted file, and that arrives in an environment variable
+(`JAM_SECRET_FILE`) rather than in argv: `powershell.exe -Command` appends
+trailing arguments to the command text instead of filling `$args` — that is
+`-File` semantics — so a path passed with `-args` reached the script as `$null`
+and both writing and reading failed. The variable holds a path, never a
+secret, and the script reads it rather than having it interpolated in.
+
 `JAM_PROJECT_CONFIG_INVALID` and `JAM_MCP_CONFIG_UNREADABLE` are stops rather
 than failures: they hold the user's own settings, so "fixing" them by
 overwriting would destroy the thing that needs fixing.
@@ -335,7 +343,7 @@ decision, not a detection. Everything else an agent can complete on its own.
 | D6 Common launcher | done |
 | D7 Project wiring and migration | done |
 | D8 Documentation of record | done |
-| D9 `jam auth login/status/logout`, OS secret store | implemented — macOS device verified; Linux and Windows injected-runner verified, device verification pending |
+| D9 `jam auth login/status/logout`, OS secret store | implemented — macOS device verified; Windows CI verified against a real `powershell.exe`, user-device E2E pending; Linux injected-runner verified, device verification pending |
 | D10 Degraded auth startup — serve connects, tools return `JAM_AUTH_REQUIRED` | planned |
 | D11 Project-required `runtime.jamVersion` | planned |
 | D12 Standalone binary | only on real demand |
@@ -372,10 +380,13 @@ What each layer is actually held to:
 - **Security** — no credential written project-side, no development path
   written project-side, no PATH or user-environment mutation, no fuzzy project
   inference, no `@latest` in anything executable. Secret-store backends are
-  exercised only through an injected runner, and the source that reads them
-  takes its store as a required argument, so no test can reach a real keychain,
-  libsecret session or DPAPI blob. The tarball sandbox switches the store off
-  outright rather than relying on which backends happen to live under `HOME`.
+  exercised through an injected runner, and the source that reads them takes
+  its store as a required argument, so no test reaches the developer's keychain
+  or libsecret session. One carve-out, added after an injected runner declared
+  a broken Windows contract healthy: the DPAPI round-trip runs a real
+  `powershell.exe` against a throwaway `HOME`, so it touches a temp blob and
+  never the user's own. The tarball sandbox switches the store off outright
+  rather than relying on which backends happen to live under `HOME`.
 - **MCP contract** — exactly five tools (three read, two write), unchanged by any internal work.
 
 Package paths are covered by `npm run pack:all` and `npm run smoke`, which
