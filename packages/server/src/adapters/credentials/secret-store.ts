@@ -189,6 +189,9 @@ function linuxStore(run: RunFn): SecretStore {
  * Kept separate from ~/.jam/config.yaml, which declares itself hand-editable
  * and free of credentials.
  */
+/** Both scripts need DPAPI, and both must survive a rewritten PSModulePath. */
+const IMPORT_SECURITY = "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop;";
+
 function windowsStore(run: RunFn): SecretStore {
   const dir = join(homedir(), ".jam");
   const path = join(dir, "credentials.dpapi");
@@ -198,7 +201,12 @@ function windowsStore(run: RunFn): SecretStore {
     "-NoProfile",
     "-NonInteractive",
     "-Command",
-    "$p=$args[0]; if(!(Test-Path $p)){exit 1};" +
+    // DPAPI lives in Microsoft.PowerShell.Security. It is normally loaded on
+    // demand, but a host that rewrites PSModulePath - a CI runner, a locked
+    // down profile - leaves the cmdlet unresolvable, and the failure names the
+    // module rather than anything about credentials. Ask for it by name.
+    IMPORT_SECURITY +
+      "$p=$args[0]; if(!(Test-Path $p)){exit 1};" +
       "$s=Get-Content $p -Raw | ConvertTo-SecureString;" +
       "[Runtime.InteropServices.Marshal]::PtrToStringAuto(" +
       "[Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))",
@@ -208,7 +216,8 @@ function windowsStore(run: RunFn): SecretStore {
     "-NoProfile",
     "-NonInteractive",
     "-Command",
-    "$in=[Console]::In.ReadToEnd();" +
+    IMPORT_SECURITY +
+      "$in=[Console]::In.ReadToEnd();" +
       "$in | ConvertTo-SecureString -AsPlainText -Force |" +
       " ConvertFrom-SecureString | Set-Content $args[0] -NoNewline",
     "-args",
