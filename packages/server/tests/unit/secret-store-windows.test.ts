@@ -42,11 +42,19 @@ type Call = { command: string; args: string[]; input?: string; env?: Record<stri
 function realRun(): { run: RunFn; calls: Call[]; outputs: RunResult[] } {
   const calls: Call[] = [];
   const outputs: RunResult[] = [];
-  const run: RunFn = (command, args, input) => {
-    calls.push({ command, args, ...(input === undefined ? {} : { input }) });
+  const run: RunFn = (command, args, input, env) => {
+    calls.push({
+      command,
+      args,
+      ...(input === undefined ? {} : { input }),
+      ...(env === undefined ? {} : { env }),
+    });
     const result = spawnSync(command, args, {
       encoding: "utf8",
       ...(input === undefined ? {} : { input }),
+      // The store passes the file path here. Dropping it is how this harness
+      // first reported the fixed code as broken.
+      ...(env === undefined ? {} : { env: { ...process.env, ...env } }),
       windowsHide: true,
     });
     const out: RunResult = {
