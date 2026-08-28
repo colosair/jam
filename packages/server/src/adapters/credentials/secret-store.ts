@@ -222,6 +222,19 @@ const IMPORT_SECURITY =
   "$env:PSModulePath=[Environment]::GetEnvironmentVariable('PSModulePath','Machine');" +
   "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop;";
 
+/**
+ * What the child writes, we read as UTF-8 - so say so before it writes anything.
+ *
+ * `spawnSync` is told `encoding: "utf8"`, but powershell.exe writes through the
+ * console code page, which on a Korean install is 949. The bytes and the decoder
+ * then disagree and an error message arrives as mojibake: the user is handed a
+ * failure they cannot even read. Setting the output encoding inside the child
+ * changes nothing outside it.
+ */
+const UTF8_OUTPUT =
+  "[Console]::OutputEncoding=[Text.Encoding]::UTF8;" +
+  "$OutputEncoding=[Text.Encoding]::UTF8;";
+
 function windowsStore(run: RunFn): SecretStore {
   const dir = join(homedir(), ".jam");
   const path = join(dir, "credentials.dpapi");
@@ -244,7 +257,8 @@ function windowsStore(run: RunFn): SecretStore {
     "-NoProfile",
     "-NonInteractive",
     "-Command",
-    IMPORT_SECURITY +
+    UTF8_OUTPUT +
+      IMPORT_SECURITY +
       `$p=$env:${PATH_VAR}; if(!(Test-Path $p)){exit 1};` +
       "$s=Get-Content $p -Raw | ConvertTo-SecureString;" +
       "[Runtime.InteropServices.Marshal]::PtrToStringAuto(" +
@@ -254,7 +268,8 @@ function windowsStore(run: RunFn): SecretStore {
     "-NoProfile",
     "-NonInteractive",
     "-Command",
-    IMPORT_SECURITY +
+    UTF8_OUTPUT +
+      IMPORT_SECURITY +
       "$in=[Console]::In.ReadToEnd();" +
       "$in | ConvertTo-SecureString -AsPlainText -Force |" +
       ` ConvertFrom-SecureString | Set-Content $env:${PATH_VAR} -NoNewline`,

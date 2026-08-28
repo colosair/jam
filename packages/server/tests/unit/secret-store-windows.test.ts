@@ -125,3 +125,43 @@ describeWindows("Windows DPAPI store, against a real powershell.exe", () => {
     );
   });
 });
+
+/**
+ * The encoding half of the same story, kept apart from correctness on purpose.
+ *
+ * The user's failure arrived as mojibake: powershell.exe writes through the
+ * console code page (949 on their machine) while `spawnSync` decodes as UTF-8.
+ * That is a separate defect from the null path - it makes a message unreadable
+ * rather than making storage fail - so it is proven separately, and by running
+ * a real shell rather than by reasoning about code pages.
+ */
+describeWindows("PowerShell output encoding", () => {
+  const marker = "한글 오류 메시지";
+  const write = `[Console]::Error.WriteLine('${marker}')`;
+
+  const stderrOf = (script: string): string => {
+    const result = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", script], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    return result.stderr ?? "";
+  };
+
+  it("declaring UTF-8 in the child makes non-ASCII stderr survive the trip", () => {
+    const withDeclaration = stderrOf(
+      `[Console]::OutputEncoding=[Text.Encoding]::UTF8;$OutputEncoding=[Text.Encoding]::UTF8;${write}`,
+    );
+
+    expect(withDeclaration).toContain(marker);
+  });
+
+  it("the store's own scripts carry that declaration", () => {
+    const { run, calls } = realRun();
+    const store = storeWith(run);
+
+    store.write(values());
+
+    const script = calls.at(-1)!.args.join(" ");
+    expect(script).toContain("[Console]::OutputEncoding=[Text.Encoding]::UTF8");
+  });
+});
