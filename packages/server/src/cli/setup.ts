@@ -146,7 +146,13 @@ function reportApplied(applied: ReturnType<typeof applySetupPlan>["applied"], pl
       continue;
     }
     if (change.target === "host-mcp") {
-      line(`[OK]   ${change.host} - jam registered for this user`);
+      line(
+        change.type === "replace"
+          ? `[OK]   ${change.host} - jam re-registered, replacing a stale launcher pin${
+              change.previousVersion ? ` (${change.previousVersion})` : ""
+            }`
+          : `[OK]   ${change.host} - jam registered for this user`,
+      );
       continue;
     }
     if (change.target === "project-config") {

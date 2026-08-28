@@ -56,6 +56,10 @@ export function applySetupPlan(plan: SetupPlan, options: ApplyOptions = {}): App
         // decides nothing. A failure is that host's failure, reported with the
         // command that produced it - never retried against another host.
         const run = options.runHost ?? defaultHostRunner;
+        // A repair removes the stale entry first. Its failure is not reported on
+        // its own: if the entry is already gone the removal fails harmlessly, and
+        // if it is still there the registration below fails and says so.
+        if (change.precede) run({ command: change.precede.command, args: change.precede.args });
         const result = run({ command: change.command, args: change.args });
         if (result.failed || result.status !== 0) {
           throw new Error(
