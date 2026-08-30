@@ -77,11 +77,11 @@ jobs:
           TAG="${GITHUB_REF_NAME#v}"
           PREFIX=$(mktemp -d)
           npm install -g --prefix "$PREFIX" "@jam-mcp/launcher@$TAG"
-          # Capture, then grep: `cmd | grep -q` kills the pipe on first match
-          # and the resulting EPIPE fails the step under pipefail (seen on the
-          # v1.4.1 run). Exit codes stay visible without a pipe.
+          # `jam --help` writes usage to stderr - stdout belongs to the MCP
+          # protocol. The v1.4.1 run piped stdout (empty) into grep and died on
+          # grep's exit 1. Capture both streams, then grep the file.
           export HOME=$(mktemp -d)
-          "$PREFIX/bin/jam" --help > help.out
+          "$PREFIX/bin/jam" --help > help.out 2>&1
           grep -q "runs the configured JAM runtime" help.out
           "$PREFIX/bin/jam" runtime use package
           "$PREFIX/bin/jam" runtime status --json > status.json
