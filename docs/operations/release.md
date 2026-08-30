@@ -51,6 +51,16 @@ registry source from running elsewhere.
 
 ## Procedure
 
+> **The canonical release path is remote.** Push a `v<version>` tag on a main
+> commit and `.github/workflows/release.yml` runs the gate, publishes all three
+> packages via npm Trusted Publishing (OIDC — no local login, no long-lived
+> token, no OTP), verifies the registry, and creates the GitHub Release.
+> The manual steps below (publish, registry confirmation, tag/Release creation)
+> are the **emergency fallback** for when GitHub Actions or OIDC is down; the
+> acceptance steps (2, 5, 6) remain human work either way. Prerequisite, once
+> per package on npmjs.com: connect `colosair/jam` + `release.yml` as the
+> trusted publisher.
+
 1. **`npm run release:verify`** — on at least one machine, and on both platforms
    when anything platform-shaped changed (paths, process spawning, shims,
    credentials).
