@@ -183,7 +183,11 @@ export async function doctorJsonCommand(options: AgentOptions = {}): Promise<num
   const state = detect(options);
   const health = await gateResult(state.project.root);
   const axes = await inspectAxes(state, options);
-  const axesOk = axes.registration === "OK" && axes.live !== "LIVE_TOOLSET_MISMATCH";
+  // 등록이 아예 없는 것은 결함이 아니다 — 새 머신, 호스트 CLI 없는 CI, 아직 setup 을
+  // 안 한 사용자 모두 정상 상태다. 전체 판정을 무너뜨리는 것은 **거짓말하는 상태**뿐:
+  // 낡은 핀을 실행 중인 등록(STALE)과, 등록은 맞는데 실제 도구가 다른 경우(MISMATCH).
+  const axesOk =
+    axes.registration !== "HOST_REGISTRATION_STALE" && axes.live !== "LIVE_TOOLSET_MISMATCH";
   const passed = health.passed && axesOk;
   emitJson({
     status: passed ? "ready" : "failed",
