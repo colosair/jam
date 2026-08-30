@@ -74,12 +74,18 @@ jobs:
 
       - name: published smoke
         run: |
-          set -o pipefail
           TAG="${GITHUB_REF_NAME#v}"
           PREFIX=$(mktemp -d)
           npm install -g --prefix "$PREFIX" "@jam-mcp/launcher@$TAG"
-          "$PREFIX/bin/jam" --help | grep -q "runs the configured JAM runtime"
-          "$PREFIX/bin/jam" runtime status --json > /dev/null
+          # `jam --help` writes usage to stderr - stdout belongs to the MCP
+          # protocol. The v1.4.1 run piped stdout (empty) into grep and died on
+          # grep's exit 1. Capture both streams, then grep the file.
+          export HOME=$(mktemp -d)
+          "$PREFIX/bin/jam" --help > help.out 2>&1
+          grep -q "runs the configured JAM runtime" help.out
+          "$PREFIX/bin/jam" runtime use package
+          "$PREFIX/bin/jam" runtime status --json > status.json
+          node -e "const d=JSON.parse(require('fs').readFileSync('status.json')); if (d.mode !== 'package' || d.version !== process.argv[1]) { console.error(d); process.exit(1) }" "$TAG"
 
       - name: GitHub Release
         env:
