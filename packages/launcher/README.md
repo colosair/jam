@@ -34,7 +34,7 @@ speaks MCP to whatever it dispatched to. Any other command is forwarded to the
 configured runtime unchanged, so `jam-launcher doctor` reaches the same
 diagnosis JAM's own CLI would.
 
-## The optional `jam` command
+## The persistent `jam` command
 
 This package installs under two names from one entry point: `jam-launcher`,
 and `jam` for people who want the short form.
@@ -43,16 +43,26 @@ and `jam` for people who want the short form.
 npm install -g @jam-mcp/launcher@1.3.2
 ```
 
-That is a convenience, not a prerequisite. JAM is fully usable without it —
-your editor launches the launcher through `npx`, and so can you. Nothing JAM
-writes or hands to a machine assumes `jam` is on anyone's PATH: a shared
-`.mcp.json` names the `npx` form, and so does every command JAM tells a script
-to run.
+That is the **persistent** way to run JAM, and it is self-sufficient: the
+launcher carries the matching server as an exact dependency, answers `jam
+runtime use package` itself (creating `~/.jam/config.yaml` — the one command
+that cannot require the file it creates), and in package mode runs that
+installed server directly under the current Node rather than through `npx`.
 
-Note what `jam` is *not*: it is not a global install of JAM. It is this
-dispatcher, which still reads `~/.jam/config.yaml` and still runs the runtime
-selected there. Installing `@jam-mcp/server` globally instead would pin one
-machine to one build and bypass that choice.
+That last part is the point. `npx` is the zero-install entry, not JAM's
+lifeline: on a machine whose package runner is broken — a real Windows npm
+11.6.2 was seen failing to put the cache's `.bin` on a child's PATH, before
+any JAM code ran — the persistent install is the path that still works. An
+`npx` failure of that kind is a package-runner failure, not a JAM one.
+
+Nothing JAM writes assumes `jam` is on anyone's PATH: a shared `.mcp.json`
+still names the `npx` form, and so does every command JAM tells a script to
+run. But a registration someone made against their own global `jam` is
+respected — `--migrate` no longer rewrites it back to `npx`.
+
+`jam` is still this dispatcher: it reads `~/.jam/config.yaml` and runs the
+runtime selected there, so `runtime use development <checkout>` keeps working
+exactly as before.
 
 ## More
 

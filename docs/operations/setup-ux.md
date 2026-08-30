@@ -356,9 +356,13 @@ npx --yes @jam-mcp/bootstrap@1.3.2 auth status --json
 ```
 
 A locally installed `jam` runs each of these identically, and this document
-writes the short form elsewhere for readability. It is not the documented path:
-the machine an agent lands on has no global install and no configured runtime,
-which rules out both `jam` and the launcher. Bootstrap is what needs neither.
+writes the short form elsewhere for readability. Bootstrap stays the
+zero-state default — the machine an agent lands on usually has no global
+install. But the launcher is no longer ruled out on a fresh machine: it
+answers `jam runtime use package` itself, so `npm install -g
+@jam-mcp/launcher@1.3.2` followed by that one command reaches the same place.
+That persistent path is also the fallback when `npx` itself cannot start a
+process (a package-runner failure, which is not a JAM failure).
 
 The contract:
 
