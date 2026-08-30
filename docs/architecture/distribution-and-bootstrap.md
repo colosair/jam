@@ -327,8 +327,17 @@ npx --yes @jam-mcp/bootstrap@1.3.2 auth status --json
 ```
 
 Bootstrap, not `jam` — an agent's first command runs on a machine with no
-global install and no `~/.jam/config.yaml`, so the short form is a convenience
-for people who already have one, never the documented entry point.
+global install, so bootstrap stays the zero-state entry point. The short form
+is the **persistent** tier rather than a mere convenience, though: the
+launcher ships the matching server as an exact dependency, answers `jam
+runtime use package` itself (the command that creates `~/.jam/config.yaml`
+cannot be forwarded through a runtime that needs the file to exist), and in
+package mode runs the installed server directly instead of through `npx`.
+Three tiers, one contract: zero-install (`npx` bootstrap), persistent
+(`npm install -g @jam-mcp/launcher@<exact>` then `jam …`), development
+(`jam runtime use development <checkout>`). An `npx` that dies before any JAM
+process starts is a package-runner failure, not a JAM one — the persistent
+tier is the documented fallback for exactly that machine.
 
 Contract: **stdout is a single parseable JSON document**, no ANSI, no prompts;
 stderr carries diagnostics. Enforced by tests that parse the whole of stdout

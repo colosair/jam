@@ -255,10 +255,15 @@ function readFile(path: string): string {
 
 describe("legacy jam entries", () => {
   it("recognises wiring that only works on the machine that wrote it", () => {
-    // A hard-coded checkout path, and a bare `jam` that needs a global install.
+    // A hard-coded checkout path.
     expect(isLegacyJamEntry({ command: "node", args: ["/abs/path/index.js", "serve"] })).toBe(true);
-    expect(isLegacyJamEntry({ command: "jam", args: ["serve"] })).toBe(true);
     expect(isLegacyJamEntry({ command: "npx", args: ["--yes", "something-else", "serve"] })).toBe(true);
+  });
+
+  it("respects a bare `jam` — the persistent install someone chose", () => {
+    // On a machine whose package runner is broken, `jam serve` is the entry
+    // that still works. Rewriting it back to npx would reinstate the failure.
+    expect(isLegacyJamEntry({ command: "jam", args: ["serve"] })).toBe(false);
   });
 
   it("does not treat current launcher-based wiring as legacy", () => {

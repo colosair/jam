@@ -251,6 +251,62 @@ process.stdout.write("\n@jam-mcp/launcher\n");
   );
 }
 
+// ----------------------------------------------- persistent (global install)
+
+process.stdout.write("\n@jam-mcp/launcher + server, installed like `npm install -g`\n");
+{
+  // 영구 설치 계약: launcher 가 전역에 깔리면 서버가 그 곁에 함께 오고,
+  // `jam` 은 config 가 없어도 `runtime` 만은 스스로 답해 첫 설정을 만들 수 있으며,
+  // package 모드는 npx 없이 그 서버를 직접 실행한다. npx 가 프로세스를 만들지
+  // 못하는 기계(실측된 Windows npm 11.6.2)에서 살아남는 경로가 바로 이것이다.
+  const { dir, home, work } = sandbox("persistent");
+  const prefix = join(home, ".npm-global");
+  mkdirSync(prefix, { recursive: true });
+  execFileSync(
+    "npm",
+    ["install", "-g", "--no-audit", "--no-fund", tarball("jam-mcp-launcher"), tarball("jam-mcp-server")],
+    {
+      cwd: dir,
+      env: isolatedEnv(home, { npm_config_prefix: prefix }),
+      encoding: "utf8",
+      shell: process.platform === "win32",
+      stdio: "pipe",
+    },
+  );
+  const globalBin =
+    process.platform === "win32" ? join(prefix, "jam.cmd") : join(prefix, "bin", "jam");
+
+  const fresh = runBin(globalBin, ["runtime", "status", "--json"], { cwd: work, home });
+  check("fresh machine: runtime status says not_configured", fresh.code !== 0, fresh.stderr.slice(0, 200));
+  const freshPayload = parseJson(fresh.stdout);
+  check(
+    "and points at the launcher's own remedy, not npx",
+    freshPayload?.nextCommand?.includes("runtime use package") === true,
+    fresh.stdout.slice(0, 200),
+  );
+
+  const use = runBin(globalBin, ["runtime", "use", "package"], { cwd: work, home });
+  check("`jam runtime use package` needs no pre-existing config", use.code === 0, use.stderr.slice(0, 200));
+
+  const status = runBin(globalBin, ["runtime", "status", "--json"], { cwd: work, home });
+  const payload = parseJson(status.stdout);
+  check("status now reports package mode", payload?.mode === "package", status.stdout.slice(0, 200));
+  check(
+    "and package mode runs the installed server directly, not through npx",
+    payload?.executable?.command !== "npx" && /index\.js$/.test(payload?.executable?.args?.[0] ?? ""),
+    JSON.stringify(payload?.executable ?? {}),
+  );
+
+  // 서버까지 실제로 도는가 — setup plan 은 자격 없이도 JSON 한 덩이를 낸다.
+  const plan = runBin(globalBin, ["setup", "plan", "--json"], { cwd: work, home });
+  const planned = parseJson(plan.stdout);
+  check(
+    "a forwarded command reaches the directly-run server and answers JSON",
+    planned?.status !== undefined,
+    (plan.stdout + plan.stderr).slice(0, 300),
+  );
+}
+
 // ------------------------------------------------------------- bootstrap
 
 process.stdout.write("\n@jam-mcp/bootstrap\n");

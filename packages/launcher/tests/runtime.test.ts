@@ -9,7 +9,7 @@ import {
   writeRuntimeConfig,
 } from "../src/runtime-config.js";
 import { resolveRuntime, resolveConfiguredRuntime } from "../src/runtime-resolver.js";
-import { resolvePackageRuntime } from "../src/package-runtime.js";
+import { resolveInstalledServer, resolvePackageRuntime } from "../src/package-runtime.js";
 import { resolveDevelopmentRuntime, SERVER_ENTRY_RELATIVE } from "../src/development-runtime.js";
 import { SERVER_PACKAGE_SPEC, SERVER_VERSION } from "../src/release.js";
 
@@ -79,15 +79,35 @@ describe("runtime config", () => {
 });
 
 describe("package runtime", () => {
-  it("pins an exact server version and never uses a floating tag", () => {
+  it("prefers a server installed next to this launcher, run directly", () => {
+    // The workspace itself has the server installed, so the default resolver
+    // finds it - which is exactly what a persistent global install looks like.
     const resolved = resolvePackageRuntime();
 
     expect(resolved.mode).toBe("package");
-    expect(resolved.version).toBe(SERVER_VERSION);
-    expect(resolved.executable.command).toBe("npx");
-    expect(resolved.executable.args).toEqual(["--yes", SERVER_PACKAGE_SPEC]);
+    expect(resolved.executable.command).toBe(process.execPath);
+    expect(resolved.executable.args[0]).toMatch(/index\.js$/);
+    // The version is read from the resolved install, not assumed from release
+    // constants - `runtime status` must report what would actually run.
+    expect(resolved.version).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it("still resolves the installed server's real location and version", () => {
+    const local = resolveInstalledServer();
+
+    expect(local).toBeDefined();
+    expect(local!.entry).toMatch(/index\.js$/);
+    expect(local!.version).toBe(SERVER_VERSION);
+  });
+
+  it("falls back to an exactly-pinned npx spec when no server is installed", () => {
+    expect(resolveInstalledServer(() => { throw new Error("not found"); })).toBeUndefined();
+
+    // With no local server the executable is the zero-install form. The pin
+    // rules stay: never a floating tag.
     expect(SERVER_PACKAGE_SPEC).not.toContain("latest");
     expect(SERVER_PACKAGE_SPEC).toMatch(/@\d+\.\d+\.\d+$/);
+    expect(SERVER_PACKAGE_SPEC).toBe(`@jam-mcp/server@${SERVER_VERSION}`);
   });
 });
 

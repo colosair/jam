@@ -22,15 +22,21 @@ export const JAM_MCP_ENTRY = {
 } as const;
 
 /**
- * Recognise wiring from before the launcher existed: a hard-coded path to one
- * machine's checkout, or a bare `jam` that depends on a global PATH install.
- * Both work only where they were written, which is why `--migrate` exists.
+ * Recognise wiring from before the launcher existed: a hard-coded `node` path
+ * to one machine's checkout. That works only where it was written, which is
+ * why `--migrate` exists.
+ *
+ * A bare `jam` is deliberately NOT legacy any more. It is what a persistent
+ * install (`npm install -g @jam-mcp/launcher@<exact>`) provides, and on a
+ * machine whose package runner is broken it is the entry that still works —
+ * a real Windows npm was seen failing to start `npx` children at all. Someone
+ * who registered it chose it; `--migrate` must not silently rewrite that
+ * choice back into the very path that fails there.
  */
 export function isLegacyJamEntry(entry: unknown): boolean {
   if (!entry || typeof entry !== "object") return false;
   const { command, args } = entry as { command?: unknown; args?: unknown };
 
-  if (command === "jam") return true;
   if (command === "node") return true;
   if (command === "npx" && Array.isArray(args)) {
     return !args.some((arg) => typeof arg === "string" && arg.startsWith("@jam-mcp/launcher@"));
