@@ -6,7 +6,7 @@ import {
 import { CompositeCredentialProvider } from "../adapters/credentials/composite.js";
 import { loadConfig } from "../config/load-config.js";
 import type { CredentialPort, CredentialSource } from "../ports/credentials.port.js";
-import { detectHosts, type HostRunner, type HostState } from "./host-mcp.js";
+import { bareJamVersion, detectHosts, type HostRunner, type HostState } from "./host-mcp.js";
 import { inspectMcpConfig, isLegacyJamEntry, type McpInspection } from "./mcp-config-merger.js";
 import { inspectProjectBindings, type ProjectBinding } from "./project-bindings.js";
 import { resolveProjectRoot } from "./project-root-resolver.js";
@@ -59,6 +59,12 @@ export type SetupState = {
    * host, which `jam doctor` has no reason to pay.
    */
   hosts: HostState[];
+  /**
+   * The version the global `jam` executable actually runs, when one answers.
+   * Measured with the hosts (same probe budget); undefined otherwise. This is
+   * what decides whether a repair registers bare `jam` or an npx pin.
+   */
+  bareLauncher?: string;
 };
 
 export type DetectOptions = {
@@ -100,6 +106,12 @@ export function detectSetupState(options: DetectOptions = {}): SetupState {
     project: { ...detectProject(located), ...(binding ? { binding } : {}) },
     mcp: detectMcp(located.root),
     hosts: options.probeHosts ? detectHosts(options.runHost) : [],
+    ...(options.probeHosts
+      ? (() => {
+          const measured = bareJamVersion(options.runHost);
+          return measured !== undefined ? { bareLauncher: measured } : {};
+        })()
+      : {}),
   };
 }
 

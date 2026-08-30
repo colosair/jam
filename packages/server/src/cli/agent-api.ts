@@ -235,7 +235,10 @@ async function inspectAxes(state: SetupState, options: AgentOptions): Promise<Do
   // and asking it means launching that older release. Repair first.
   if (registered.entryStale) return axes;
 
-  const registration = hostRegistration(registered.id);
+  // Launch what is actually registered: a bare entry runs the global `jam`,
+  // an npx pin runs the pinned launcher. Testing the other one would prove
+  // nothing about the entry the agent uses.
+  const registration = hostRegistration(registered.id, { bare: registered.entryBare === true });
   const launch = registration ? launcherArgv(registration.args) : null;
   if (!launch) return { ...axes, live: "UNCHECKED", detail: "could not read the registered command" };
 

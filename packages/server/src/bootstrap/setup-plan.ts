@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { CONFIG_RELATIVE_PATH } from "../config/load-config.js";
-import { hostRegistration, hostUnregistration, type HostId } from "./host-mcp.js";
+import { hostRegistration, preferBareRegistration, hostUnregistration, type HostId } from "./host-mcp.js";
 import type { MigrationTarget } from "./migration-target.js";
 import { projectBindingsPath } from "./project-bindings.js";
 import { decideProjectKey, type BootstrapSource } from "./project-config-bootstrapper.js";
@@ -289,7 +289,11 @@ function planHostChanges(state: SetupState): SetupChange[] {
     // An entry that exists but runs an older launcher is not "already set up":
     // that pin decides which server, and so which tools, the agent actually gets.
     if (host.hasJamEntry && host.entryStale !== true) continue;
-    const registration = hostRegistration(host.id);
+    // A machine whose global `jam` already runs this release gets the
+    // persistent registration; anything else keeps the npx pin fallback.
+    const registration = hostRegistration(host.id, {
+      bare: preferBareRegistration(state.bareLauncher),
+    });
     if (!registration) continue;
     const removal = hostUnregistration(host.id);
     changes.push({
