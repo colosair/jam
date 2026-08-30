@@ -222,3 +222,105 @@ describe("host registration through plan and apply", () => {
     expect(listsJamEntry(["jam  npx  enabled", ...lookalikes.split("\n")].join("\n"))).toBe(true);
   });
 });
+
+// ── bare `jam` registration (1.4.2) ─────────────────────────────────────────
+//
+// SSAFESTA 실전에서 잡힌 결함의 회귀 고정: persistent 설치의 정본 등록인 bare
+// `jam`이 (a) 영구 STALE 오탐되고 (b) setup repair 가 npx pin 으로 되돌려
+// npx 캐시 구조를 재생산했다. staleness 는 라인이 아니라 실행체를 실측한다.
+
+import { SERVER_VERSION } from "@jam-mcp/launcher";
+import {
+  bareJamVersion,
+  isBareJamEntry,
+  isEntryStale,
+  preferBareRegistration,
+} from "../../src/bootstrap/host-mcp.js";
+
+const bareListing = (command = "jam"): HostRunResult => ({
+  status: 0,
+  failed: false,
+  stdout: [`jam: ${command} serve - ✔ Connected`, "other  npx", ""].join("\n"),
+});
+const runtimeStatus = (version: string): HostRunResult => ({
+  status: 0,
+  failed: false,
+  stdout: JSON.stringify({ status: "configured", mode: "package", version }),
+});
+
+describe("bare jam entry — version-aware staleness", () => {
+  it("bare 라인을 npx 라인과 구분한다 (경로·확장자 표기 포함)", () => {
+    for (const command of ["jam", "/usr/local/bin/jam", "C:\\Users\\x\\jam.cmd", "jam.exe"]) {
+      expect(isBareJamEntry(`jam: ${command} serve - ✔ Connected`), command).toBe(true);
+    }
+    expect(isBareJamEntry(`jam: npx --yes ${LAUNCHER_PACKAGE_SPEC} serve`)).toBe(false);
+    expect(isBareJamEntry("jam: node /somewhere/jam-server.js serve")).toBe(false);
+  });
+
+  it("global launcher 가 이 릴리스와 같으면 bare 등록은 OK 다", () => {
+    const { run } = recorder((cmd) =>
+      cmd.command === "jam" ? runtimeStatus(SERVER_VERSION) : bareListing(),
+    );
+    const hosts = detectHosts(run);
+    const claude = hosts.find((h) => h.id === "claude-code")!;
+    expect(claude.entryBare).toBe(true);
+    expect(claude.entryVersion).toBe(SERVER_VERSION);
+    expect(claude.entryStale).toBe(false);
+  });
+
+  it("global launcher 가 구버전이면 bare 등록은 STALE 이고 측정된 버전이 남는다", () => {
+    const { run } = recorder((cmd) =>
+      cmd.command === "jam" ? runtimeStatus("0.0.1-older") : bareListing(),
+    );
+    const claude = detectHosts(run).find((h) => h.id === "claude-code")!;
+    expect(claude.entryStale).toBe(true);
+    expect(claude.entryVersion).toBe("0.0.1-older");
+  });
+
+  it("jam 이 실행되지 않으면 측정 불가 — 보수적으로 STALE", () => {
+    const { run } = recorder((cmd) =>
+      cmd.command === "jam" ? { status: null, failed: true, stdout: "" } : bareListing(),
+    );
+    const claude = detectHosts(run).find((h) => h.id === "claude-code")!;
+    expect(claude.entryStale).toBe(true);
+    expect(claude.entryVersion).toBeUndefined();
+  });
+
+  it("bare 라고 무조건 OK 가 아니다 — isEntryStale 는 측정값 없이는 stale 이다", () => {
+    expect(isEntryStale("jam: jam serve")).toBe(true);
+    expect(isEntryStale("jam: jam serve", SERVER_VERSION)).toBe(false);
+    expect(isEntryStale("jam: jam serve", "0.0.1-older")).toBe(true);
+  });
+
+  it("bareJamVersion 은 JSON 이 아니거나 실패하면 undefined", () => {
+    expect(bareJamVersion(() => ({ status: 0, failed: false, stdout: "not json" }))).toBeUndefined();
+    expect(bareJamVersion(() => ({ status: 1, failed: false, stdout: "{}" }))).toBeUndefined();
+  });
+});
+
+describe("setup repair — persistent-aware registration", () => {
+  it("호환 global launcher 가 있으면 repair 는 bare jam 을 등록한다", () => {
+    expect(preferBareRegistration(SERVER_VERSION)).toBe(true);
+    const registration = hostRegistration("claude-code", { bare: true })!;
+    expect(registration.args.slice(registration.args.indexOf("--"))).toEqual(["--", "jam", "serve"]);
+    // npx pin 재생산 금지 — 캐시 구조를 도구가 다시 만들지 않는다.
+    expect(registration.args.join(" ")).not.toContain("npx");
+  });
+
+  it("global launcher 가 없거나 구버전이면 기존 npx pin fallback 이다", () => {
+    expect(preferBareRegistration(undefined)).toBe(false);
+    expect(preferBareRegistration("0.0.1-older")).toBe(false);
+    const registration = hostRegistration("claude-code", { bare: false })!;
+    expect(registration.args.join(" ")).toContain(LAUNCHER_PACKAGE_SPEC);
+  });
+
+  it("등록·수리 명령은 host CLI 만 부른다 — ~/.jam 의 config/projects/credential 은 접촉 대상이 아니다", () => {
+    for (const id of ["claude-code", "codex"] as const) {
+      for (const bare of [true, false]) {
+        const cmd = hostRegistration(id, { bare })!;
+        expect(["claude", "codex"]).toContain(cmd.command);
+        expect(cmd.args.join(" ")).not.toMatch(/\.jam|config\.yaml|projects\.yaml|credential/);
+      }
+    }
+  });
+});

@@ -35,6 +35,8 @@ export type HostState = {
   entryVersion?: string;
   /** The entry is present but does not run the launcher this release registers. */
   entryStale?: boolean;
+  /** The entry runs the global `jam` executable rather than an npx pin. */
+  entryBare?: boolean;
 };
 
 export type HostRunResult = {
@@ -89,6 +91,14 @@ type HostAdapter = {
  */
 const LAUNCH: string[] = ["--", JAM_MCP_ENTRY.command, ...JAM_MCP_ENTRY.args];
 
+/**
+ * What a persistent install registers: the global `jam` executable, no
+ * package runner, no cache. Only offered when the measured global launcher
+ * is exactly this release (preferBareRegistration) - registering bare over
+ * an older global would silently downgrade the served toolset.
+ */
+const LAUNCH_BARE: string[] = ["--", "jam", "serve"];
+
 const ADAPTERS: HostAdapter[] = [
   {
     id: "claude-code",
@@ -106,8 +116,15 @@ const ADAPTERS: HostAdapter[] = [
   },
 ];
 
-export function hostRegistration(id: HostId): HostCommand | undefined {
-  return ADAPTERS.find((a) => a.id === id)?.register;
+export function hostRegistration(
+  id: HostId,
+  options: { bare?: boolean } = {},
+): HostCommand | undefined {
+  const adapter = ADAPTERS.find((a) => a.id === id);
+  if (!adapter) return undefined;
+  if (!options.bare) return adapter.register;
+  const at = adapter.register.args.indexOf("--");
+  return { command: adapter.register.command, args: [...adapter.register.args.slice(0, at), ...LAUNCH_BARE] };
 }
 
 /** The removal that has to precede re-registering an entry this host already has. */
@@ -148,15 +165,58 @@ export function entryLauncherVersion(line: string): string | undefined {
 }
 
 /**
+ * Does this entry run the persistent `jam` executable rather than an npx pin?
+ *
+ * `jam: jam serve`, `jam: /usr/local/bin/jam serve`, `jam: C:\...\jam.cmd serve`
+ * all count; an npx line never does - its command token is `npx`. A bare entry
+ * carries no version in the listing, so its staleness has to be measured from
+ * the executable it would actually run (bareJamVersion), not from the line.
+ */
+export function isBareJamEntry(line: string): boolean {
+  const command = line.replace(/^\s*jam\s*:?\s*/, "");
+  return /^(?:\S*[\\/])?jam(?:\.cmd|\.exe)?["']?\s+serve\b/i.test(command);
+}
+
+/**
+ * The version a bare `jam` registration actually runs, measured by asking the
+ * executable itself. `runtime status --json` answers from ~/.jam/config.yaml
+ * and the resolved build - the same resolution the registered entry performs.
+ *
+ * undefined when `jam` is not on PATH or does not answer: a registration that
+ * cannot be measured counts as stale, same as an unreadable pin.
+ */
+export function bareJamVersion(run: HostRunner = defaultHostRunner): string | undefined {
+  const result = run({ command: "jam", args: ["runtime", "status", "--json"] });
+  if (result.failed || result.status !== 0) return undefined;
+  try {
+    const version = (JSON.parse(result.stdout) as { version?: unknown }).version;
+    return typeof version === "string" ? version : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Is this measured launcher version the one this release registers? */
+export function preferBareRegistration(version: string | undefined): boolean {
+  return version !== undefined && version === EXPECTED_LAUNCHER_VERSION;
+}
+
+/**
  * Does this entry run the launcher this release registers?
  *
- * Anything else - an older pin, an unpinned spec, a line whose command JAM
- * cannot read - counts as stale. That direction is deliberate: `mcp add`
- * rewrites the same entry, so a needless repair costs one command, while a
- * missed one leaves the agent talking to a server nobody tested it against.
+ * An npx pin answers from the line itself. A bare `jam` line names no version,
+ * so the caller passes what the executable measured (`bareVersion`) - without
+ * it, bare stays stale. Anything else - an older pin, an unpinned spec, a line
+ * whose command JAM cannot read - counts as stale. That direction is
+ * deliberate: `mcp add` rewrites the same entry, so a needless repair costs
+ * one command, while a missed one leaves the agent talking to a server nobody
+ * tested it against.
  */
-export function isEntryStale(line: string): boolean {
-  return entryLauncherVersion(line) !== EXPECTED_LAUNCHER_VERSION;
+export function isEntryStale(line: string, bareVersion?: string): boolean {
+  const pinned = entryLauncherVersion(line);
+  if (pinned !== undefined) return pinned !== EXPECTED_LAUNCHER_VERSION;
+  if (isBareJamEntry(line)) return bareVersion !== EXPECTED_LAUNCHER_VERSION;
+  return true;
 }
 
 const EXPECTED_LAUNCHER_VERSION = entryLauncherVersion(JAM_MCP_ENTRY.args.join(" "));
@@ -183,6 +243,7 @@ export function detectHosts(run: HostRunner = defaultHostRunner): HostState[] {
 let cachedHosts: HostState[] | undefined;
 
 function probeHosts(run: HostRunner): HostState[] {
+  let bareCache: { version: string | undefined } | undefined;
   return ADAPTERS.map((adapter) => {
     const result = run(adapter.probe);
     if (result.failed || result.status !== 0) {
@@ -190,15 +251,24 @@ function probeHosts(run: HostRunner): HostState[] {
     }
     const line = jamEntryLine(result.stdout);
     if (!line) return { id: adapter.id, cliAvailable: true, hasJamEntry: false };
-    const version = entryLauncherVersion(line);
+    // A bare entry's version lives in the executable, not the line - measure
+    // it once, only when a bare entry actually shows up.
+    const bare = isBareJamEntry(line);
+    const version = entryLauncherVersion(line) ?? (bare ? measuredBare() : undefined);
     return {
       id: adapter.id,
       cliAvailable: true,
       hasJamEntry: true,
       ...(version ? { entryVersion: version } : {}),
-      entryStale: isEntryStale(line),
+      ...(bare ? { entryBare: true } : {}),
+      entryStale: isEntryStale(line, version),
     };
   });
+
+  function measuredBare(): string | undefined {
+    bareCache ??= { version: bareJamVersion(run) };
+    return bareCache.version;
+  }
 }
 
 /** How a person would do it by hand, for the hosts JAM could not reach. */
