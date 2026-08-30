@@ -40,10 +40,17 @@ const available = (): HostRunResult => ({
   failed: false,
   stdout: ["other  npx  enabled", ""].join("\n"),
 });
+/** An entry from an older release — present, but running a launcher nobody tested this against. */
 const registered = (): HostRunResult => ({
   status: 0,
   failed: false,
   stdout: ["jam  npx --yes @jam-mcp/launcher@1.0.0 serve  enabled", "other  npx", ""].join("\n"),
+});
+/** An entry that runs what this release registers. */
+const current = (): HostRunResult => ({
+  status: 0,
+  failed: false,
+  stdout: [`jam  npx --yes ${LAUNCHER_PACKAGE_SPEC} serve  enabled`, "other  npx", ""].join("\n"),
 });
 const missing = (): HostRunResult => ({ status: null, failed: true, stdout: "" });
 
@@ -146,14 +153,32 @@ describe("host registration through plan and apply", () => {
     expect(JSON.stringify(apply.calls)).toContain(LAUNCHER_PACKAGE_SPEC);
   });
 
-  it("plans nothing for a host that already has jam", () => {
+  it("plans nothing for a host whose entry already runs this launcher", () => {
+    const { root, home } = fixture();
+
+    const plan = computeSetupPlan(state(home, root, recorder(current).run), {
+      explicitKey: "PROJECT",
+    });
+
+    expect(plan.changes.some((c) => c.target === "host-mcp")).toBe(false);
+  });
+
+  it("repairs an entry pinned to an older launcher, and says what it replaces", () => {
     const { root, home } = fixture();
 
     const plan = computeSetupPlan(state(home, root, recorder(registered).run), {
       explicitKey: "PROJECT",
     });
 
-    expect(plan.changes.some((c) => c.target === "host-mcp")).toBe(false);
+    const repairs = plan.changes.filter((c) => c.target === "host-mcp");
+    expect(repairs.length).toBeGreaterThan(0);
+    expect(repairs[0]).toMatchObject({
+      type: "replace",
+      reason: "stale-registration",
+      previousVersion: "1.0.0",
+    });
+    // An existing-but-stale entry is not "already configured".
+    expect(plan.status).toBe("ready_to_apply");
   });
 
   it("plans nothing for a host it could not reach, rather than guessing", () => {

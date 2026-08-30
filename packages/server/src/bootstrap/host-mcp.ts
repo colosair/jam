@@ -23,6 +23,18 @@ export type HostState = {
   cliAvailable: boolean;
   /** Whether it already has a `jam` entry registered for this user. */
   hasJamEntry: boolean;
+  /**
+   * The launcher pin that entry actually runs, when the listing shows it.
+   *
+   * An entry existing is not the same as an entry being current: a pin written
+   * by an older release keeps running that release's server, which serves a
+   * different set of tools. Reading only the name made a stale registration
+   * indistinguishable from a good one, and setup then reported
+   * `already_configured` over it.
+   */
+  entryVersion?: string;
+  /** The entry is present but does not run the launcher this release registers. */
+  entryStale?: boolean;
 };
 
 export type HostRunResult = {
@@ -60,6 +72,15 @@ type HostAdapter = {
   probe: HostCommand;
   /** The registration itself, run only by apply. */
   register: HostCommand;
+  /**
+   * How to take the existing entry away first.
+   *
+   * `mcp add` was assumed to overwrite; it does not - Claude Code answers
+   * "MCP server jam already exists in user config" and changes nothing, which
+   * is why a stale pin survived every re-run of setup. A repair removes, then
+   * adds.
+   */
+  unregister: HostCommand;
 };
 
 /**
@@ -75,16 +96,23 @@ const ADAPTERS: HostAdapter[] = [
     // `-s user` is the whole point: registered for this user on this machine,
     // not for whichever project happens to be open.
     register: { command: "claude", args: ["mcp", "add", "jam", "-s", "user", ...LAUNCH] },
+    unregister: { command: "claude", args: ["mcp", "remove", "jam", "-s", "user"] },
   },
   {
     id: "codex",
     probe: { command: "codex", args: ["mcp", "list"] },
     register: { command: "codex", args: ["mcp", "add", "jam", ...LAUNCH] },
+    unregister: { command: "codex", args: ["mcp", "remove", "jam"] },
   },
 ];
 
 export function hostRegistration(id: HostId): HostCommand | undefined {
   return ADAPTERS.find((a) => a.id === id)?.register;
+}
+
+/** The removal that has to precede re-registering an entry this host already has. */
+export function hostUnregistration(id: HostId): HostCommand | undefined {
+  return ADAPTERS.find((a) => a.id === id)?.unregister;
 }
 
 const ANSI = /\[[0-9;?]*[A-Za-z]/g;
@@ -102,11 +130,36 @@ const ANSI = /\[[0-9;?]*[A-Za-z]/g;
  * `mcp add` on an existing entry writes the same launcher line back.
  */
 export function listsJamEntry(stdout: string): boolean {
-  return stdout
+  return jamEntryLine(stdout) !== null;
+}
+
+/** The listing line for `jam`, ANSI stripped, or null when there is none. */
+export function jamEntryLine(stdout: string): string | null {
+  const line = stdout
     .replace(ANSI, "")
     .split(/\r?\n/)
-    .some((line) => /^\s*jam(?=[\s:])/.test(line));
+    .find((candidate) => /^\s*jam(?=[\s:])/.test(candidate));
+  return line ?? null;
 }
+
+/** The launcher version a listing line runs, when the line names one. */
+export function entryLauncherVersion(line: string): string | undefined {
+  return /@jam-mcp\/launcher@([^\s"']+)/.exec(line)?.[1];
+}
+
+/**
+ * Does this entry run the launcher this release registers?
+ *
+ * Anything else - an older pin, an unpinned spec, a line whose command JAM
+ * cannot read - counts as stale. That direction is deliberate: `mcp add`
+ * rewrites the same entry, so a needless repair costs one command, while a
+ * missed one leaves the agent talking to a server nobody tested it against.
+ */
+export function isEntryStale(line: string): boolean {
+  return entryLauncherVersion(line) !== EXPECTED_LAUNCHER_VERSION;
+}
+
+const EXPECTED_LAUNCHER_VERSION = entryLauncherVersion(JAM_MCP_ENTRY.args.join(" "));
 
 /**
  * Ask each host what it has, and whether it is there at all.
@@ -135,10 +188,15 @@ function probeHosts(run: HostRunner): HostState[] {
     if (result.failed || result.status !== 0) {
       return { id: adapter.id, cliAvailable: false, hasJamEntry: false };
     }
+    const line = jamEntryLine(result.stdout);
+    if (!line) return { id: adapter.id, cliAvailable: true, hasJamEntry: false };
+    const version = entryLauncherVersion(line);
     return {
       id: adapter.id,
       cliAvailable: true,
-      hasJamEntry: listsJamEntry(result.stdout),
+      hasJamEntry: true,
+      ...(version ? { entryVersion: version } : {}),
+      entryStale: isEntryStale(line),
     };
   });
 }

@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createServer, SERVER_NAME } from "../../src/mcp/create-server.js";
+import { createServer, SERVER_NAME, TOOL_NAMES } from "../../src/mcp/create-server.js";
 import type { JamDeps } from "../../src/deps.js";
 import { FakeJira, issue, testDeps } from "../helpers.js";
 
@@ -253,5 +253,13 @@ describe("tool contract", () => {
     expect(JSON.stringify(raw)).toMatch(/validation/i);
     // the invalid call must never have reached Jira
     expect(jira.searchCalls).toHaveLength(0);
+  });
+});
+
+describe("TOOL_NAMES", () => {
+  it("names exactly what a running server serves", async () => {
+    const client = await connect(testDeps(new FakeJira({ pages: [], issues: [] })));
+    const live = (await client.listTools()).tools.map((tool) => tool.name).sort();
+    expect([...TOOL_NAMES].sort()).toEqual(live);
   });
 });

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { CONFIG_RELATIVE_PATH } from "../config/load-config.js";
-import { hostRegistration, type HostId } from "./host-mcp.js";
+import { hostRegistration, hostUnregistration, type HostId } from "./host-mcp.js";
 import type { MigrationTarget } from "./migration-target.js";
 import { projectBindingsPath } from "./project-bindings.js";
 import { decideProjectKey, type BootstrapSource } from "./project-config-bootstrapper.js";
@@ -40,7 +40,7 @@ export type SetupChange =
       previousKey?: string;
     }
   | {
-      type: "create";
+      type: "create" | "replace";
       target: "host-mcp";
       host: HostId;
       /**
@@ -50,6 +50,15 @@ export type SetupChange =
        */
       command: string;
       args: string[];
+      /**
+       * Run before the registration, on a repair. The host CLI refuses to add an
+       * entry that already exists, so the stale one has to go first - and which
+       * command does that is decided here, not worked out during apply.
+       */
+      precede?: { command: string; args: string[] };
+      /** On a repair: the launcher pin the entry runs today, so the preview names it. */
+      previousVersion?: string;
+      reason?: "stale-registration";
     };
 
 export type SetupPlan = {
@@ -276,15 +285,22 @@ function finish(
 function planHostChanges(state: SetupState): SetupChange[] {
   const changes: SetupChange[] = [];
   for (const host of state.hosts) {
-    if (!host.cliAvailable || host.hasJamEntry) continue;
+    if (!host.cliAvailable) continue;
+    // An entry that exists but runs an older launcher is not "already set up":
+    // that pin decides which server, and so which tools, the agent actually gets.
+    if (host.hasJamEntry && host.entryStale !== true) continue;
     const registration = hostRegistration(host.id);
     if (!registration) continue;
+    const removal = hostUnregistration(host.id);
     changes.push({
-      type: "create",
+      type: host.hasJamEntry ? "replace" : "create",
       target: "host-mcp",
       host: host.id,
       command: registration.command,
       args: registration.args,
+      ...(host.hasJamEntry && removal ? { precede: { command: removal.command, args: removal.args } } : {}),
+      ...(host.entryVersion ? { previousVersion: host.entryVersion } : {}),
+      ...(host.hasJamEntry ? { reason: "stale-registration" as const } : {}),
     });
   }
   return changes;
