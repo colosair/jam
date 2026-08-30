@@ -33,8 +33,18 @@ export type RunResult = {
   error?: NodeJS.ErrnoException;
 };
 
-/** Injected by tests so the suite never touches a real keychain. */
-export type RunFn = (command: string, args: string[], input?: string) => RunResult;
+/**
+ * Injected by tests so the suite never touches a real keychain.
+ *
+ * `env` is merged over the inherited environment, and carries only values that
+ * are not secret - a file path, say. Secrets travel on stdin.
+ */
+export type RunFn = (
+  command: string,
+  args: string[],
+  input?: string,
+  env?: Record<string, string>,
+) => RunResult;
 
 export interface SecretStore {
   /** Shown by `jam auth login`. Names the mechanism, never a value. */
@@ -80,10 +90,16 @@ function account(): string {
   return userInfo().username;
 }
 
-function defaultRun(command: string, args: string[], input?: string): RunResult {
+function defaultRun(
+  command: string,
+  args: string[],
+  input?: string,
+  env?: Record<string, string>,
+): RunResult {
   const result = spawnSync(command, args, {
     encoding: "utf8",
     ...(input === undefined ? {} : { input }),
+    ...(env === undefined ? {} : { env: { ...process.env, ...env } }),
     // No shell: arguments are passed as an array, so nothing is re-parsed.
     windowsHide: true,
   });
@@ -189,42 +205,100 @@ function linuxStore(run: RunFn): SecretStore {
  * Kept separate from ~/.jam/config.yaml, which declares itself hand-editable
  * and free of credentials.
  */
+/**
+ * Both scripts need DPAPI, and both must survive a host that rewrote where
+ * PowerShell looks for modules.
+ *
+ * A CI runner does exactly that - it prepends its own paths, including ones
+ * belonging to a different PowerShell edition, and then Windows PowerShell 5.1
+ * either cannot resolve `ConvertTo-SecureString` at all or trips over type data
+ * from a module that was never meant for it. Neither failure says anything
+ * about credentials, so both look like a JAM bug to whoever reads them.
+ *
+ * So the child starts from the machine's own module path and asks for the
+ * module by name. This changes nothing outside that one short-lived process.
+ */
+const IMPORT_SECURITY =
+  "$env:PSModulePath=[Environment]::GetEnvironmentVariable('PSModulePath','Machine');" +
+  "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop;";
+
+/**
+ * What the child writes, we read as UTF-8 - so say so before it writes anything.
+ *
+ * `spawnSync` is told `encoding: "utf8"`, but powershell.exe writes through the
+ * console code page, which on a Korean install is 949. The bytes and the decoder
+ * then disagree and an error message arrives as mojibake: the user is handed a
+ * failure they cannot even read. Setting the output encoding inside the child
+ * changes nothing outside it.
+ */
+const UTF8_OUTPUT =
+  "[Console]::OutputEncoding=[Text.Encoding]::UTF8;" +
+  "$OutputEncoding=[Text.Encoding]::UTF8;";
+
+/**
+ * Read stdin as UTF-8, by saying so on the stream rather than on the console.
+ *
+ * `[Console]::In` on Windows PowerShell 5.1 is already bound to the console
+ * input code page by the time a `-Command` script could change it, so a value
+ * with non-ASCII in it - a Jira account under a Korean name, say - arrived
+ * mangled and was then encrypted mangled. Opening the standard input stream
+ * with an explicit encoding sidesteps that entirely.
+ */
+const READ_STDIN_UTF8 =
+  "$in=(New-Object IO.StreamReader(" +
+  "[Console]::OpenStandardInput(),[Text.Encoding]::UTF8)).ReadToEnd();";
+
 function windowsStore(run: RunFn): SecretStore {
   const dir = join(homedir(), ".jam");
   const path = join(dir, "credentials.dpapi");
-  // The path reaches PowerShell as an argument, never interpolated into the
-  // script text; the secret reaches it on stdin.
+
+  /**
+   * The path reaches PowerShell in an environment variable, never in argv and
+   * never interpolated into the script text.
+   *
+   * It used to ride as a trailing argument with `-args`, which does not work:
+   * `powershell.exe -Command` appends what follows to the command text rather
+   * than filling `$args` - that is `-File` semantics - so the script read
+   * `$args[0]` as `$null` and `Set-Content` refused the null path. Reading was
+   * broken the same way and failed quietly, since `Test-Path $null` is false.
+   *
+   * The variable holds a path, not a secret. The secret still reaches the
+   * process on stdin and appears nowhere else.
+   */
+  const PATH_VAR = "JAM_SECRET_FILE";
   const decrypt = [
     "-NoProfile",
     "-NonInteractive",
     "-Command",
-    "$p=$args[0]; if(!(Test-Path $p)){exit 1};" +
+    UTF8_OUTPUT +
+      IMPORT_SECURITY +
+      `$p=$env:${PATH_VAR}; if(!(Test-Path $p)){exit 1};` +
       "$s=Get-Content $p -Raw | ConvertTo-SecureString;" +
       "[Runtime.InteropServices.Marshal]::PtrToStringAuto(" +
       "[Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))",
-    "-args",
   ];
   const encrypt = [
     "-NoProfile",
     "-NonInteractive",
     "-Command",
-    "$in=[Console]::In.ReadToEnd();" +
+    UTF8_OUTPUT +
+      IMPORT_SECURITY +
+      READ_STDIN_UTF8 +
       "$in | ConvertTo-SecureString -AsPlainText -Force |" +
-      " ConvertFrom-SecureString | Set-Content $args[0] -NoNewline",
-    "-args",
+      ` ConvertFrom-SecureString | Set-Content $env:${PATH_VAR} -NoNewline`,
   ];
 
   return {
     label: "Windows DPAPI (user-encrypted file)",
     read() {
       if (!existsSync(path)) return undefined;
-      const res = run("powershell", [...decrypt, path]);
+      const res = run("powershell", decrypt, undefined, { [PATH_VAR]: path });
       if (res.error || res.status !== 0) return undefined;
       return parse(res.stdout.trim());
     },
     write(values) {
       mkdirSync(dir, { recursive: true });
-      const res = run("powershell", [...encrypt, path], JSON.stringify(values));
+      const res = run("powershell", encrypt, JSON.stringify(values), { [PATH_VAR]: path });
       if (res.error?.code === "ENOENT") throw unavailable("powershell");
       if (res.status !== 0) throw new Error(`DPAPI write failed: ${res.stderr.trim()}`);
       try {
