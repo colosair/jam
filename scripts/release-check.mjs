@@ -116,6 +116,9 @@ for (const path of tracked) {
     // `<exact>`, `<version>` and friends are deliberately generic - prose that
     // stays true across releases rather than a version anyone types.
     if (pinned.startsWith("<") && pinned.endsWith(">")) continue;
+    // Shell/workflow variables (`@$TAG`) resolve to the release version at run
+    // time - the release workflow derives them from the tag it verifies.
+    if (pinned.startsWith("$")) continue;
     // A floating or partial spec is worse than a stale one: it changes under
     // the reader, and npm resolves it to something nobody tested.
     if (/^(latest|next)$/.test(pinned) || /^[\^~]/.test(pinned) || !/^\d+\.\d+\.\d+$/.test(pinned)) {
