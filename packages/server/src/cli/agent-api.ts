@@ -10,7 +10,9 @@ import { detectSetupState, type SetupState } from "../bootstrap/setup-state.js";
 import { buildDeps } from "../deps.js";
 import { toJamError } from "../domain/errors.js";
 import type { CredentialPort } from "../ports/credentials.port.js";
-import type { HostRunner } from "../bootstrap/host-mcp.js";
+import { hostRegistration, type HostRunner } from "../bootstrap/host-mcp.js";
+import { checkLiveToolset, type ToolsetProbe } from "../bootstrap/live-toolset.js";
+import { SERVER_VERSION } from "@jam-mcp/launcher";
 import type { GitRemoteFn } from "../bootstrap/workspace-identity.js";
 
 /**
@@ -39,6 +41,8 @@ export type AgentOptions = {
   env?: NodeJS.ProcessEnv;
   /** Injected by tests so a plan never shells out to npm to verify a migration target. */
   migrationTarget?: MigrationTarget;
+  /** Injected by tests so doctor never launches a real MCP server to read its tools. */
+  toolsetProbe?: ToolsetProbe;
   /** Injected by tests so identity never depends on the checkout under test. */
   git?: GitRemoteFn;
   /** Injected by tests so no test ever registers JAM with a real host. */
@@ -165,17 +169,88 @@ export async function setupAgentCommand(options: AgentOptions = {}): Promise<num
   return health.passed ? 0 : 1;
 }
 
-/** `jam doctor --json`. */
+/**
+ * `jam doctor --json`.
+ *
+ * Three axes, kept apart on purpose. The package on this machine being current
+ * says nothing about what the host registration launches, and neither says what
+ * the agent can actually call - a stale pin serves an older tool set while every
+ * local check passes. Reporting them as one verdict is how a broken setup was
+ * reported as ready.
+ */
 export async function doctorJsonCommand(options: AgentOptions = {}): Promise<number> {
+  // detect() already probes the hosts for every non-shared path; doctor wants that.
   const state = detect(options);
   const health = await gateResult(state.project.root);
+  const axes = await inspectAxes(state, options);
+  // 등록이 아예 없는 것은 결함이 아니다 — 새 머신, 호스트 CLI 없는 CI, 아직 setup 을
+  // 안 한 사용자 모두 정상 상태다. 전체 판정을 무너뜨리는 것은 **거짓말하는 상태**뿐:
+  // 낡은 핀을 실행 중인 등록(STALE)과, 등록은 맞는데 실제 도구가 다른 경우(MISMATCH).
+  const axesOk =
+    axes.registration !== "HOST_REGISTRATION_STALE" && axes.live !== "LIVE_TOOLSET_MISMATCH";
+  const passed = health.passed && axesOk;
   emitJson({
-    status: health.passed ? "ready" : "failed",
+    status: passed ? "ready" : "failed",
     ...(health.error ? { error: health.error } : {}),
     project: { root: state.project.root, ...(state.project.key ? { key: state.project.key } : {}) },
+    axes,
     checks: health.checks,
   });
-  return health.passed ? 0 : 1;
+  return passed ? 0 : 1;
+}
+
+type DoctorAxes = {
+  /** The runtime this machine would run, and whether it is the one this release pins. */
+  package: "PACKAGE_READY" | "PACKAGE_NOT_READY";
+  packageVersion?: string;
+  /** What the host CLIs have registered for this user. */
+  registration: "OK" | "HOST_REGISTRATION_STALE" | "UNREGISTERED" | "HOST_UNREACHABLE";
+  registeredVersion?: string;
+  /** What the registered command actually serves. Only asked when there is one. */
+  live: "OK" | "LIVE_TOOLSET_MISMATCH" | "UNREACHABLE" | "UNCHECKED";
+  missingTools?: string[];
+  detail?: string;
+};
+
+async function inspectAxes(state: SetupState, options: AgentOptions): Promise<DoctorAxes> {
+  const packageVersion = state.runtime.version;
+  const axes: DoctorAxes = {
+    package: packageVersion === SERVER_VERSION ? "PACKAGE_READY" : "PACKAGE_NOT_READY",
+    ...(packageVersion ? { packageVersion } : {}),
+    registration: "UNREGISTERED",
+    live: "UNCHECKED",
+  };
+
+  const hosts = state.hosts.filter((host) => host.cliAvailable);
+  if (state.hosts.length > 0 && hosts.length === 0) {
+    return { ...axes, registration: "HOST_UNREACHABLE", detail: "no host CLI answered" };
+  }
+  const registered = hosts.find((host) => host.hasJamEntry);
+  if (!registered) return axes;
+
+  axes.registration = registered.entryStale ? "HOST_REGISTRATION_STALE" : "OK";
+  if (registered.entryVersion) axes.registeredVersion = registered.entryVersion;
+
+  // A stale entry has already answered the question the live check would ask,
+  // and asking it means launching that older release. Repair first.
+  if (registered.entryStale) return axes;
+
+  const registration = hostRegistration(registered.id);
+  const launch = registration ? launcherArgv(registration.args) : null;
+  if (!launch) return { ...axes, live: "UNCHECKED", detail: "could not read the registered command" };
+
+  const result = await checkLiveToolset(launch, options.toolsetProbe);
+  axes.live = result.verdict === "OK" ? "OK" : result.verdict;
+  if (result.missing && result.missing.length > 0) axes.missingTools = result.missing;
+  if (result.detail) axes.detail = result.detail;
+  return axes;
+}
+
+/** The registration argv carries the launch command after `--`. */
+function launcherArgv(args: string[]): { command: string; args: string[] } | null {
+  const at = args.indexOf("--");
+  if (at < 0 || args.length <= at + 1) return null;
+  return { command: args[at + 1]!, args: args.slice(at + 2) };
 }
 
 /**

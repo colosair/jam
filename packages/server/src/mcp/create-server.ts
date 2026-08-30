@@ -28,6 +28,20 @@ const REGISTER_TOOLS = [
 export const TOOL_COUNT = REGISTER_TOOLS.length;
 
 /**
+ * The same contract by name, for the checks that ask a *running* server what it
+ * serves. The registrars above cannot be introspected for their tool names, and
+ * counting is not enough: five tools with one renamed is still five.
+ * `tests/contract/tools.test.ts` holds this list to what the server registers.
+ */
+export const TOOL_NAMES = [
+  "jira_search",
+  "jira_context",
+  "jira_full",
+  "jira_write_plan",
+  "jira_write_apply",
+] as const;
+
+/**
  * The external contract: three read tools and two write tools.
  *
  * What JAM can write grows as operations inside `jira_write_plan`, never as
