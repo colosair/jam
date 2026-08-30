@@ -214,7 +214,10 @@ process.stdout.write("\n@jam-mcp/server\n");
 process.stdout.write("\n@jam-mcp/launcher\n");
 {
   const { dir, home, work } = sandbox("launcher");
-  const bin = join(install(dir, home, [tarball("jam-mcp-launcher")]), "jam-launcher");
+  // launcher 는 서버를 정확 핀 의존으로 갖는다. registry 에 아직 없는 버전을
+  // 오프라인 스모크가 찾으러 가지 않도록 서버 tarball 을 함께 설치한다 —
+  // 검증하는 계약(미설정이면 JAM_RUNTIME_CONFIG_MISSING)은 그대로다.
+  const bin = join(install(dir, home, [tarball("jam-mcp-launcher"), tarball("jam-mcp-server")]), "jam-launcher");
 
   const unconfigured = runBin(bin, ["serve"], { cwd: work, home });
   check("exits non-zero with no runtime configured", unconfigured.code !== 0);
