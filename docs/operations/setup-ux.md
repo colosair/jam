@@ -194,7 +194,7 @@ probe blocks the process, so a spinner would print one frame and then freeze —
 it gets a pending line instead, and only when a probe actually happens:
 
 ```text
-○ Checking @jam-mcp/launcher@1.4.0 on npm...
+○ Checking @jam-mcp/launcher@1.4.1 on npm...
 ```
 
 Disabled entirely when not interactive, where it degrades to a single pending
@@ -235,7 +235,7 @@ shell history:
 ```text
 × Migration target is not available from the configured npm registry
 
-  npm could not find @jam-mcp/launcher@1.4.0 in the configured registry.
+  npm could not find @jam-mcp/launcher@1.4.1 in the configured registry.
   Existing .mcp.json was left unchanged.
 ```
 
@@ -283,7 +283,7 @@ adoption is asked for.
   Recorded for you only - the repository was not touched.
 ✓ Registered with            claude-code
 ! codex was not reachable, so JAM was not registered with it.
-› If you use it, run: codex mcp add jam -- npx --yes @jam-mcp/launcher@1.4.0 serve
+› If you use it, run: codex mcp add jam -- npx --yes @jam-mcp/launcher@1.4.1 serve
 ```
 
 **A rebind names what it replaces.** `jam setup --project OTHER` on a workspace
@@ -347,12 +347,12 @@ method creates, so that one row stays a human check.
 For agents and scripts:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.4.0 setup plan --json
-npx --yes @jam-mcp/bootstrap@1.4.0 setup apply --non-interactive --json
-npx --yes @jam-mcp/bootstrap@1.4.0 setup --agent
-npx --yes @jam-mcp/bootstrap@1.4.0 doctor --json
-npx --yes @jam-mcp/bootstrap@1.4.0 runtime --json
-npx --yes @jam-mcp/bootstrap@1.4.0 auth status --json
+npx --yes @jam-mcp/bootstrap@1.4.1 setup plan --json
+npx --yes @jam-mcp/bootstrap@1.4.1 setup apply --non-interactive --json
+npx --yes @jam-mcp/bootstrap@1.4.1 setup --agent
+npx --yes @jam-mcp/bootstrap@1.4.1 doctor --json
+npx --yes @jam-mcp/bootstrap@1.4.1 runtime --json
+npx --yes @jam-mcp/bootstrap@1.4.1 auth status --json
 ```
 
 A locally installed `jam` runs each of these identically, and this document
@@ -360,7 +360,7 @@ writes the short form elsewhere for readability. Bootstrap stays the
 zero-state default — the machine an agent lands on usually has no global
 install. But the launcher is no longer ruled out on a fresh machine: it
 answers `jam runtime use package` itself, so `npm install -g
-@jam-mcp/launcher@1.4.0` followed by that one command reaches the same place.
+@jam-mcp/launcher@1.4.1` followed by that one command reaches the same place.
 That persistent path is also the fallback when `npx` itself cannot start a
 process (a package-runner failure, which is not a JAM failure).
 

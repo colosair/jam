@@ -6,8 +6,8 @@ This package exists so the *first* command a person or a coding agent runs needs
 nothing installed beforehand:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.4.0 init          # for a person
-npx --yes @jam-mcp/bootstrap@1.4.0 setup --agent # for a coding agent, JSON only
+npx --yes @jam-mcp/bootstrap@1.4.1 init          # for a person
+npx --yes @jam-mcp/bootstrap@1.4.1 setup --agent # for a coding agent, JSON only
 ```
 
 `init` chooses how JAM runs on this machine and wires up the current project.
@@ -26,7 +26,7 @@ sync with the setup core.
 That pass-through is also why bootstrap is what JAM names in machine-readable
 instructions. On a machine that has just met JAM there is no global command to
 call and no configured runtime for the launcher to dispatch to — bootstrap
-needs neither, so `npx --yes @jam-mcp/bootstrap@1.4.0 <anything>` works when
+needs neither, so `npx --yes @jam-mcp/bootstrap@1.4.1 <anything>` works when
 nothing else does.
 
 The three packages divide up like this:

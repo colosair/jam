@@ -1033,8 +1033,8 @@ Claude Code
 zero-install 경로로 대체됐다.
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.4.0 init         # 사람
-npx --yes @jam-mcp/bootstrap@1.4.0 setup --agent # 코딩 에이전트
+npx --yes @jam-mcp/bootstrap@1.4.1 init         # 사람
+npx --yes @jam-mcp/bootstrap@1.4.1 setup --agent # 코딩 에이전트
 ```
 
 배포·부트스트랩의 설계 정본은 `docs/architecture/distribution-and-bootstrap.md`,
@@ -1050,7 +1050,7 @@ README에서 설치 절차를 지어내던 문제가 이 절에서 시작됐다.
 zero-install 형태는 다음이다.
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.4.0 doctor --json
+npx --yes @jam-mcp/bootstrap@1.4.1 doctor --json
 ```
 
 검사 항목의 정본은 코드다: `packages/server/src/bootstrap/boot-health-gate.ts`.
