@@ -211,6 +211,19 @@ trailing arguments to the command text instead of filling `$args` — that is
 and both writing and reading failed. The variable holds a path, never a
 secret, and the script reads it rather than having it interpolated in.
 
+Stdin is opened with an explicit UTF-8 encoding rather than through
+`[Console]::In`, which Windows PowerShell 5.1 has already bound to the console
+code page by the time a `-Command` script runs. Without that, a credential
+holding non-ASCII was encrypted mangled and came back mangled, while the write
+reported success. Output encoding is declared for the same reason, so a failure
+message arrives readable rather than as mojibake.
+
+Verified on a user's Windows machine, not only in CI: `auth login` stores, a
+**new** shell reports `source: secret-store` with no `JIRA_*` in the process or
+user environment, and `doctor` reaches Jira through it — authentication, JQL
+search and an issue read. An MCP client started separately against that build
+called `jira_search` and got live issues back.
+
 `JAM_PROJECT_CONFIG_INVALID` and `JAM_MCP_CONFIG_UNREADABLE` are stops rather
 than failures: they hold the user's own settings, so "fixing" them by
 overwriting would destroy the thing that needs fixing.
@@ -343,7 +356,7 @@ decision, not a detection. Everything else an agent can complete on its own.
 | D6 Common launcher | done |
 | D7 Project wiring and migration | done |
 | D8 Documentation of record | done |
-| D9 `jam auth login/status/logout`, OS secret store | implemented — macOS device verified; Windows CI verified against a real `powershell.exe`, user-device E2E pending; Linux injected-runner verified, device verification pending |
+| D9 `jam auth login/status/logout`, OS secret store | implemented — macOS and Windows device verified; Linux injected-runner verified, device verification pending |
 | D10 Degraded auth startup — serve connects, tools return `JAM_AUTH_REQUIRED` | planned |
 | D11 Project-required `runtime.jamVersion` | planned |
 | D12 Standalone binary | only on real demand |
