@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tempDir } from "../support/temp.js";
 import { describe, expect, it } from "vitest";
 import { decideProjectKey, writeBootstrapConfig } from "../../src/bootstrap/project-config-bootstrapper.js";
 import { resolveProjectConfig } from "../../src/bootstrap/project-config-resolver.js";
@@ -12,7 +12,7 @@ import {
 } from "../../src/bootstrap/mcp-config-merger.js";
 
 function tmp(prefix: string): string {
-  return mkdtempSync(join(tmpdir(), prefix));
+  return tempDir(prefix);
 }
 
 function withConfig(root: string, yaml: string): void {

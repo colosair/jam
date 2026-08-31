@@ -1,6 +1,6 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tempDir } from "../support/temp.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LAUNCHER_PACKAGE_SPEC } from "../../src/bootstrap/mcp-config-merger.js";
 import type { HostRunResult } from "../../src/bootstrap/host-mcp.js";
@@ -22,7 +22,7 @@ const listing = (entry: string): HostRunResult => ({
 const noEntry = (): HostRunResult => ({ status: 0, failed: false, stdout: "other  npx\n" });
 
 function fixture(): { root: string; home: string } {
-  const base = mkdtempSync(join(tmpdir(), "jam-doctor-"));
+  const base = tempDir("jam-doctor-");
   const root = join(base, "project");
   const home = join(base, "home");
   mkdirSync(root, { recursive: true });

@@ -1,8 +1,8 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tempDir } from "../support/temp.js";
 import { describe, expect, it } from "vitest";
 import { createServer } from "../../src/mcp/create-server.js";
 import { runHealthGate } from "../../src/bootstrap/boot-health-gate.js";
@@ -100,7 +100,7 @@ describe("doctor and serve share one gate core", () => {
   it("serve never calls connect() when the boot gate fails", async () => {
     // A config file is already present so bootstrap never even needs to run -
     // the failure being tested is purely "credentials missing".
-    const root = mkdtempSync(join(tmpdir(), "jam-serve-fail-"));
+    const root = tempDir("jam-serve-fail-");
     mkdirSync(join(root, ".jira-agent"), { recursive: true });
     writeFileSync(
       join(root, ".jira-agent", "project.yaml"),

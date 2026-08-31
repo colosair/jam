@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tempDir } from "../support/temp.js";
 import { describe, expect, it } from "vitest";
 import { bootstrapForServe } from "../../src/bootstrap/bootstrap-orchestrator.js";
 import { writeProjectBinding } from "../../src/bootstrap/project-bindings.js";
@@ -25,7 +25,7 @@ const noCredentials: CredentialPort = {
 };
 
 function tmp(prefix: string): string {
-  return mkdtempSync(join(tmpdir(), prefix));
+  return tempDir(prefix);
 }
 
 /** A repo with no JAM wiring at all. */

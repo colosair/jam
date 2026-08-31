@@ -1,7 +1,9 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { cleanupNow, tempDir } from "../../server/tests/support/temp.js";
+
+afterAll(() => cleanupNow());
+import { afterAll, describe, expect, it } from "vitest";
 import {
   normalizeRuntimeConfig,
   readRuntimeConfig,
@@ -14,7 +16,7 @@ import { resolveDevelopmentRuntime, SERVER_ENTRY_RELATIVE } from "../src/develop
 import { SERVER_PACKAGE_SPEC, SERVER_VERSION } from "../src/release.js";
 
 function tmp(prefix: string): string {
-  return mkdtempSync(join(tmpdir(), prefix));
+  return tempDir(prefix);
 }
 
 /** Build a directory that passes every development-source check. */

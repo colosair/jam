@@ -1,6 +1,6 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tempDir } from "../support/temp.js";
 import { describe, expect, it } from "vitest";
 import {
   findProjectBinding,
@@ -12,7 +12,7 @@ import {
 import { snapshot } from "../helpers.js";
 
 function home(): string {
-  return mkdtempSync(join(tmpdir(), "jam-bindhome-"));
+  return tempDir("jam-bindhome-");
 }
 
 function withBindings(contents: string): string {

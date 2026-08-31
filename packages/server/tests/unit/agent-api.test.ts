@@ -1,6 +1,6 @@
-import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tempDir } from "../support/temp.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   authStatusCommand,
@@ -37,7 +37,7 @@ const authenticated = () => ({ credentials: new FakeCredentials(), ...pinned });
 const unauthenticated = () => ({ credentials: noCredentials, ...pinned });
 
 function tmp(prefix: string): string {
-  return mkdtempSync(join(tmpdir(), prefix));
+  return tempDir(prefix);
 }
 
 function project(): string {
