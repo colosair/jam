@@ -46,8 +46,17 @@ describe("dispatch", () => {
 
     await promise;
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.command).toBe("npx");
-    expect(calls[0]?.args).toEqual(["--yes", "@jam-mcp/server@1.0.0", "serve"]);
+    if (process.platform === "win32") {
+      // npx is a .cmd shim: it needs a shell, and an args array plus
+      // shell:true is DEP0190 - the argv is joined into one validated line.
+      expect(calls[0]?.command).toBe("npx --yes @jam-mcp/server@1.0.0 serve");
+      expect(calls[0]?.args).toEqual([]);
+      expect(calls[0]?.options.shell).toBe(true);
+    } else {
+      expect(calls[0]?.command).toBe("npx");
+      expect(calls[0]?.args).toEqual(["--yes", "@jam-mcp/server@1.0.0", "serve"]);
+      expect(calls[0]?.options.shell).toBe(false);
+    }
     expect(calls[0]?.options.cwd).toBe("/work/project");
   });
 
@@ -104,5 +113,17 @@ describe("dispatch", () => {
     child.emit("error", Object.assign(new Error("ENOENT"), { code: "ENOENT" }));
 
     await expect(promise).rejects.toMatchObject({ code: "JAM_PACKAGE_RUNTIME_FAILED" });
+  });
+});
+
+import { joinForCmd } from "../src/dispatch.js";
+
+describe("joinForCmd", () => {
+  it("joins bare tokens, quotes whitespace, refuses cmd metacharacters", () => {
+    expect(joinForCmd("npx", ["--yes", "@jam-mcp/launcher@1.4.2", "serve"]).command).toBe(
+      "npx --yes @jam-mcp/launcher@1.4.2 serve",
+    );
+    expect(joinForCmd("npx", ["a b"]).command).toBe('npx "a b"');
+    expect(() => joinForCmd("npx", ["a&b"])).toThrow("a&b");
   });
 });

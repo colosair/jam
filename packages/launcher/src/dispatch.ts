@@ -36,13 +36,19 @@ export function dispatch(
   const spawnFn = options.spawnFn ?? spawn;
   const command = runtime.executable.command;
   const args = [...runtime.executable.args, ...argv];
+  // npx on Windows is a shell script, not an executable, so it needs a shell.
+  // An args array plus shell:true is deprecated (DEP0190: Node concatenates
+  // without escaping), so the argv is joined here instead - after refusing any
+  // token cmd.exe would re-interpret, which the old concatenation would have
+  // silently mangled anyway.
+  const viaShell = process.platform === "win32" && command === "npx";
+  const invocation = viaShell ? joinForCmd(command, args) : { command, args };
 
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawnFn(command, args, {
+    const child = spawnFn(invocation.command, invocation.args, {
       cwd: options.cwd ?? process.cwd(),
       stdio: "inherit",
-      // npx on Windows is a shell script, not an executable.
-      shell: process.platform === "win32" && command === "npx",
+      shell: viaShell,
     });
 
     const forward = (signal: NodeJS.Signals) => () => {
@@ -87,3 +93,28 @@ const SIGNAL_NUMBERS: Partial<Record<NodeJS.Signals, number>> = {
   SIGINT: 2,
   SIGTERM: 15,
 };
+
+/** Anything cmd.exe would re-interpret. Tokens carrying one are refused, not escaped. */
+const CMD_UNSAFE = /[&|<>^"'`;()]/;
+
+/**
+ * One command line for cmd.exe, built from tokens JAM controls.
+ *
+ * Package-runtime argv is npm specs and subcommands - bare tokens. A token
+ * with whitespace (a path a user passed through) is quoted; a token cmd.exe
+ * would re-interpret is refused with the token named, because the previous
+ * behaviour (unescaped concatenation via shell:true) would have mangled it
+ * silently.
+ */
+export function joinForCmd(command: string, args: string[]): { command: string; args: string[] } {
+  const rendered = [command, ...args].map((token) => {
+    if (CMD_UNSAFE.test(token)) {
+      throw new LauncherError(
+        "JAM_PACKAGE_RUNTIME_FAILED",
+        `Cannot pass this argument through cmd.exe safely: ${JSON.stringify(token)}`,
+      );
+    }
+    return /\s/.test(token) ? `"${token}"` : token;
+  });
+  return { command: rendered.join(" "), args: [] };
+}

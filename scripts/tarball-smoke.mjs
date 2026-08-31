@@ -92,7 +92,8 @@ function sandbox(name) {
 /** Install tarballs into an isolated prefix. Returns the node_modules/.bin path. */
 function install(dir, home, tarballs) {
   writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "smoke", private: true }), "utf8");
-  execFileSync("npm", ["install", "--no-audit", "--no-fund", ...tarballs], {
+  const [npmFile, npmArgs] = forShell("npm", ["install", "--no-audit", "--no-fund", ...tarballs]);
+  execFileSync(npmFile, npmArgs, {
     cwd: dir,
     env: isolatedEnv(home),
     encoding: "utf8",
@@ -104,7 +105,8 @@ function install(dir, home, tarballs) {
 
 function runBin(bin, args, { cwd, home, env = {} }) {
   try {
-    const stdout = execFileSync(bin, args, {
+    const [file, rest] = forShell(bin, args);
+    const stdout = execFileSync(file, rest, {
       cwd,
       env: isolatedEnv(home, env),
       encoding: "utf8",
@@ -128,7 +130,8 @@ function runBin(bin, args, { cwd, home, env = {} }) {
  */
 async function runBinAsync(bin, args, { cwd, home, env = {} }) {
   try {
-    const { stdout } = await execFileAsync(bin, args, {
+    const [afile, arest] = forShell(bin, args);
+    const { stdout } = await execFileAsync(afile, arest, {
       cwd,
       env: isolatedEnv(home, env),
       encoding: "utf8",
@@ -559,3 +562,14 @@ process.stdout.write(
   failures === 0 ? "\nAll tarball smoke checks passed.\n" : `\n${failures} check(s) failed.\n`,
 );
 process.exitCode = failures === 0 ? 0 : 1;
+
+/**
+ * npm/npx are .cmd shims on Windows and need a shell - but an args array plus
+ * shell:true is DEP0190 (unescaped concatenation). Join here, quoting only
+ * whitespace; these are our own dev-script argv, not user input.
+ */
+function forShell(command, args) {
+  if (process.platform !== "win32") return [command, args];
+  const line = [command, ...args].map((t) => (/s/.test(t) ? `"${t}"` : t)).join(" ");
+  return [line, []];
+}

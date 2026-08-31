@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { JAM_MCP_ENTRY } from "./mcp-config-merger.js";
+import { shellInvocation, stripPackageRunnerPath } from "./shell-command.js";
 
 /**
  * The coding agents JAM knows how to register itself with, for this user
@@ -56,13 +57,37 @@ export type HostRunner = (command: HostCommand) => HostRunResult;
 const HOST_TIMEOUT_MS = 20_000;
 
 export const defaultHostRunner: HostRunner = ({ command, args }) => {
-  const result = spawnSync(command, args, {
+  // Both CLIs are npm shims on Windows, and Node refuses to spawn a .cmd
+  // without a shell. Every argument JAM passes is a bare token - no JSON, no
+  // spaces - and shellInvocation validates exactly that before joining the
+  // argv into one line (an args array plus shell:true is DEP0190).
+  const invocation = shellInvocation(command, args);
+  const result = spawnSync(invocation.command, invocation.args, {
     encoding: "utf8",
     timeout: HOST_TIMEOUT_MS,
-    // Both CLIs are npm shims on Windows, and Node refuses to spawn a .cmd
-    // without a shell. Every argument JAM passes is a bare token - no JSON, no
-    // spaces - precisely so this cannot become a quoting hazard.
-    shell: process.platform === "win32",
+    shell: invocation.shell,
+  });
+  if (result.error) return { status: null, failed: true, stdout: "" };
+  return { status: result.status, failed: false, stdout: result.stdout ?? "" };
+};
+
+/**
+ * A runner that only sees what is persistently installed on this machine.
+ *
+ * Under `npx --yes @jam-mcp/bootstrap@X`, PATH carries npx's cache
+ * `node_modules/.bin` - which contains a `jam` shim that vanishes when npx
+ * exits. Any measurement of "does a global jam exist" through the normal PATH
+ * therefore lies during bootstrap, which is exactly when the answer matters
+ * most. This runner strips those entries first.
+ */
+export const persistentHostRunner: HostRunner = ({ command, args }) => {
+  const invocation = shellInvocation(command, args);
+  const pathValue = process.env.PATH ?? process.env.Path ?? "";
+  const result = spawnSync(invocation.command, invocation.args, {
+    encoding: "utf8",
+    timeout: HOST_TIMEOUT_MS,
+    shell: invocation.shell,
+    env: { ...process.env, PATH: stripPackageRunnerPath(pathValue) },
   });
   if (result.error) return { status: null, failed: true, stdout: "" };
   return { status: result.status, failed: false, stdout: result.stdout ?? "" };
@@ -184,8 +209,12 @@ export function isBareJamEntry(line: string): boolean {
  *
  * undefined when `jam` is not on PATH or does not answer: a registration that
  * cannot be measured counts as stale, same as an unreadable pin.
+ *
+ * Measured through persistentHostRunner by default: under an npx bootstrap
+ * the ordinary PATH resolves `jam` to npx's own ephemeral cache shim, and a
+ * bare registration decided on that evidence dies as soon as npx exits.
  */
-export function bareJamVersion(run: HostRunner = defaultHostRunner): string | undefined {
+export function bareJamVersion(run: HostRunner = persistentHostRunner): string | undefined {
   const result = run({ command: "jam", args: ["runtime", "status", "--json"] });
   if (result.failed || result.status !== 0) return undefined;
   try {
@@ -266,7 +295,10 @@ function probeHosts(run: HostRunner): HostState[] {
   });
 
   function measuredBare(): string | undefined {
-    bareCache ??= { version: bareJamVersion(run) };
+    // The real probe runner sees npx's contaminated PATH; the persistent
+    // runner is the honest one for this question. An injected runner is a
+    // test, and stays in charge of its own answers.
+    bareCache ??= { version: bareJamVersion(run === defaultHostRunner ? persistentHostRunner : run) };
     return bareCache.version;
   }
 }

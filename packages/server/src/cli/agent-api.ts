@@ -118,12 +118,23 @@ export async function setupApplyCommand(options: AgentOptions = {}): Promise<num
     ...(options.home ? { home: options.home } : {}),
     ...(options.runHost ? { runHost: options.runHost } : {}),
   });
-  emitJson({ ...plan, status: applyStatus(plan), changesApplied: result.changesApplied });
+  emitJson({
+    ...plan,
+    status: applyStatus(plan, result.changesApplied),
+    changesApplied: result.changesApplied,
+  });
   return plan.requiresUserAction ? 1 : 0;
 }
 
-function applyStatus(plan: SetupPlan): SetupPlan["status"] {
-  return plan.requiresUserAction ? "user_action_required" : "already_configured";
+/**
+ * The status of an apply, after it ran. "already_configured" means nothing
+ * was executed; when changes did run the answer is "applied" - reporting
+ * "already_configured" alongside changesApplied:true made the two fields
+ * contradict each other, and an agent could believe either one.
+ */
+function applyStatus(plan: SetupPlan, changesApplied: boolean): SetupPlan["status"] | "applied" {
+  if (plan.requiresUserAction) return "user_action_required";
+  return changesApplied ? "applied" : "already_configured";
 }
 
 /**

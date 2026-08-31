@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { shellInvocation } from "./shell-command.js";
 import { LAUNCHER_PACKAGE_SPEC } from "./mcp-config-merger.js";
 import { computeSetupPlan, type PlanOptions, type SetupPlan } from "./setup-plan.js";
 import type { SetupState } from "./setup-state.js";
@@ -38,11 +39,13 @@ export type RunFn = (command: string, args: string[]) => RunResult;
 const PROBE_TIMEOUT_MS = 10_000;
 
 function runNpm(command: string, args: string[]): RunResult {
-  const result = spawnSync(command, args, {
+  // npm on Windows is a shell script, not an executable; shellInvocation
+  // joins the validated argv because an args array plus shell:true is DEP0190.
+  const invocation = shellInvocation(command, args);
+  const result = spawnSync(invocation.command, invocation.args, {
     encoding: "utf8",
     timeout: PROBE_TIMEOUT_MS,
-    // npm on Windows is a shell script, not an executable.
-    shell: process.platform === "win32",
+    shell: invocation.shell,
   });
   return {
     status: result.status,

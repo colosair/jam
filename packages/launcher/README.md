@@ -9,7 +9,7 @@ indirection is what lets a committed `.mcp.json` name no machine-specific path:
 ```json
 {
   "mcpServers": {
-    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.4.2", "serve"] }
+    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.4.3", "serve"] }
   }
 }
 ```
@@ -40,7 +40,7 @@ This package installs under two names from one entry point: `jam-launcher`,
 and `jam` for people who want the short form.
 
 ```bash
-npm install -g @jam-mcp/launcher@1.4.2
+npm install -g @jam-mcp/launcher@1.4.3
 ```
 
 That is the **persistent** way to run JAM, and it is self-sufficient: the

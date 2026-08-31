@@ -20,12 +20,25 @@ const outDir = join(repoRoot, "private", "packs");
 const PACKAGES = ["@jam-mcp/launcher", "@jam-mcp/server", "@jam-mcp/bootstrap"];
 
 function run(command, args, cwd = repoRoot) {
-  return execFileSync(command, args, {
+  const [file, rest] = forShell(command, args);
+  return execFileSync(file, rest, {
     cwd,
     encoding: "utf8",
     shell: process.platform === "win32",
   });
 }
+
+/**
+ * npm/npx are .cmd shims on Windows and need a shell - but an args array plus
+ * shell:true is DEP0190 (unescaped concatenation). Join here, quoting only
+ * whitespace; these are our own dev-script argv, not user input.
+ */
+function forShell(command, args) {
+  if (process.platform !== "win32") return [command, args];
+  const line = [command, ...args].map((t) => (/s/.test(t) ? `"${t}"` : t)).join(" ");
+  return [line, []];
+}
+
 
 rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
