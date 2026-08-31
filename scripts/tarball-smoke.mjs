@@ -268,17 +268,21 @@ process.stdout.write("\n@jam-mcp/launcher + server, installed like `npm install 
   const { dir, home, work } = sandbox("persistent");
   const prefix = join(home, ".npm-global");
   mkdirSync(prefix, { recursive: true });
-  execFileSync(
-    "npm",
-    ["install", "-g", "--no-audit", "--no-fund", tarball("jam-mcp-launcher"), tarball("jam-mcp-server")],
-    {
-      cwd: dir,
-      env: isolatedEnv(home, { npm_config_prefix: prefix }),
-      encoding: "utf8",
-      shell: process.platform === "win32",
-      stdio: "pipe",
-    },
-  );
+  const [globalNpm, globalNpmArgs] = forShell("npm", [
+    "install",
+    "-g",
+    "--no-audit",
+    "--no-fund",
+    tarball("jam-mcp-launcher"),
+    tarball("jam-mcp-server"),
+  ]);
+  execFileSync(globalNpm, globalNpmArgs, {
+    cwd: dir,
+    env: isolatedEnv(home, { npm_config_prefix: prefix }),
+    encoding: "utf8",
+    shell: process.platform === "win32",
+    stdio: "pipe",
+  });
   const globalBin =
     process.platform === "win32" ? join(prefix, "jam.cmd") : join(prefix, "bin", "jam");
 
