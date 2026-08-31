@@ -110,9 +110,15 @@ function withoutEvidence(text) {
 
 for (const path of tracked) {
   if (path.endsWith("package-lock.json")) continue;
+  // A historical release note pins its OWN version - that is its record, and
+  // re-pinning it to the current release would falsify it. Each note is held
+  // to self-consistency (pins equal the version in its filename); the current
+  // version's note is additionally checked by the release-note gate below.
+  const ownNote = /^docs\/releases\/v(\d+\.\d+\.\d+)\.md$/.exec(path);
+  const expected = ownNote ? ownNote[1] : version;
   const text = withoutEvidence(read(path));
   for (const [spec, , pinned] of text.matchAll(SPEC)) {
-    if (pinned === version) continue;
+    if (pinned === expected) continue;
     // `<exact>`, `<version>` and friends are deliberately generic - prose that
     // stays true across releases rather than a version anyone types.
     if (pinned.startsWith("<") && pinned.endsWith(">")) continue;
@@ -127,7 +133,7 @@ for (const path of tracked) {
       fail(path, `${spec} is not an exact version`);
       continue;
     }
-    fail(path, `${spec} does not match this release (${version})`);
+    fail(path, `${spec} does not match ${ownNote ? "its own note version" : "this release"} (${expected})`);
   }
 }
 
