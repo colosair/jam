@@ -1,15 +1,24 @@
 // Temp lifecycle - what a test creates is reclaimed even when it fails.
+//
 // Not a %TEMP%-wide scan (that reads other programs' files); this verifies
-// the ownership lifecycle of tempDir itself, including the exit path of a
-// worker that died on an assertion.
-import { spawnSync } from "node:child_process";
+// the ownership lifecycle itself. The authoritative reclamation under vitest
+// is the globalSetup teardown in the MAIN process - it runs after the workers
+// finish regardless of assertion failures or throws, so proving
+// "tempDir registers into the manifest" plus "teardown removes what the
+// manifest lists" covers the failure path without spawning a child (which
+// would also drag Node-version type-stripping into the picture).
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { MANIFEST_ENV, teardown } from "../global-temp.js";
 import { cleanupNow, tempDir } from "../support/temp.js";
 
-const posix = (p: string) => p.split("\\").join("/");
+const saved = process.env[MANIFEST_ENV];
+afterEach(() => {
+  if (saved === undefined) delete process.env[MANIFEST_ENV];
+  else process.env[MANIFEST_ENV] = saved;
+});
 
 describe("temp hygiene - reclamation of test-owned directories", () => {
   it("cleanupNow removes what tempDir created", () => {
@@ -19,24 +28,22 @@ describe("temp hygiene - reclamation of test-owned directories", () => {
     expect(existsSync(dir)).toBe(false);
   });
 
-  it("a child process that throws still reclaims on exit", () => {
+  it("tempDir registers into the manifest, and teardown reclaims what it lists", () => {
     const stage = mkdtempSync(join(tmpdir(), "jam-hygiene-stage-"));
-    const marker = posix(join(stage, "made.txt"));
-    const helper = "file:///" + posix(join(import.meta.dirname, "..", "support", "temp.ts"));
-    const script = join(stage, "failing.mjs");
-    writeFileSync(script, [
-      "import { writeFileSync } from 'node:fs'",
-      "import { tempDir } from '" + helper + "'",
-      "const dir = tempDir('jam-hygiene-child-')",
-      "writeFileSync('" + marker + "', dir)",
-      "throw new Error('deliberate failure')",
-    ].join("\n"));
-    const env = { ...process.env };
-    delete env["NODE_TEST_CONTEXT"];
-    const run = spawnSync(process.execPath, [script], { encoding: "utf8", env });
-    expect(run.status).not.toBe(0);
-    const childDir = readFileSync(marker, "utf8").trim();
-    expect(existsSync(childDir)).toBe(false);
+    const manifest = join(stage, "owned.txt");
+    writeFileSync(manifest, "");
+    process.env[MANIFEST_ENV] = manifest;
+
+    const dir = tempDir("jam-hygiene-listed-");
+    expect(readFileSync(manifest, "utf8")).toContain(dir);
+    expect(existsSync(dir)).toBe(true);
+
+    // teardown runs in the main process after the workers, whatever the tests
+    // did - reclaiming the listed directory IS the failure-path guarantee.
+    teardown();
+    expect(existsSync(dir)).toBe(false);
+
+    cleanupNow(); // drop the local registration so the exit hook has nothing left
     rmSync(stage, { recursive: true, force: true });
   });
 });
