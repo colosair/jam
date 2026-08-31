@@ -129,9 +129,10 @@ and resending it is how one comment becomes two. An ambiguous failure is
 | `JAM_WRITE_VERIFICATION_FAILED` | Jira accepted it, the issue does not show it — read the issue |
 | `JAM_WRITE_UNCERTAIN` | read the issue; **do not** re-apply |
 
-Not in this release: creating or deleting issues, bulk changes, editing or
-deleting comments, worklogs, attachments, links, assignee, and custom fields.
-The Atlassian MCP still covers those.
+Not in this release: deleting issues, bulk changes, editing or deleting
+comments, worklogs, attachments, links, custom fields, unassigning, and
+setting an assignee or parent at creation. The Atlassian MCP still covers
+those.
 
 See [ADR: the Jira write plane](docs/decisions/adr-jira-write-plane.md) for why
 it is shaped this way.
@@ -361,7 +362,7 @@ connectivity checks.
 **By default, nothing in the repository.** `jam setup` is personal: it records
 which Jira project this workspace belongs to in your own
 `~/.jam/projects.yaml`, and registers JAM with the coding agents on this
-machine through their own CLIs (`claude mcp add-json … -s user`,
+machine through their own CLIs (`claude mcp add … -s user`,
 `codex mcp add …`). The repository is left byte-identical — no `.jira-agent/`,
 no `.mcp.json`, no `.gitignore` edit. You can use JAM in a repository you do
 not own, or have not decided about yet.
@@ -441,9 +442,9 @@ record of the decision. This repo's own
 the longer version with a worked example.
 
 JAM does not replace the Atlassian MCP. That one keeps Confluence and every
-Jira change JAM does not cover - creating and deleting issues, bulk edits,
-worklogs, attachments, links, assignee. JAM is the default path for Jira reads,
-and for the three changes it can make safely.
+Jira change JAM does not cover - deleting issues, bulk edits, worklogs,
+attachments, links, custom fields. JAM is the default path for Jira reads,
+and for the five changes it can make safely.
 
 ## Design documents
 

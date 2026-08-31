@@ -56,7 +56,9 @@ Handle these failures as follows, and do not collapse them into "it failed":
   not show it. Read the issue and tell the user what it actually says.
 - `JAM_WRITE_UNCERTAIN` - JAM does not know whether the write landed. **Read the
   issue. Never call `jira_write_apply` again** - the write may already have been
-  applied, and a second attempt is a second comment or a second transition.
+  applied, and a second attempt is a second comment, a second transition, or -
+  for `issue.create` - a second issue. After an uncertain create, look in the
+  project rather than planning another one.
 
 Only an `applied` receipt means it happened. An unverified or uncertain write is
 never reported to the user as done.
