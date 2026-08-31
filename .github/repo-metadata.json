@@ -1,0 +1,17 @@
+{
+  "$comment": "Expected GitHub repository presentation. Checked by `npm run presentation:check` (read-only, maintenance-time). Deliberately NOT part of the release gate: a registry release must never fail on GitHub API weather.",
+  "description": "Agent-facing Jira MCP access layer for Claude Code and Codex.",
+  "homepage": "https://github.com/colosair/jam#readme",
+  "topics": [
+    "claude-code",
+    "codex",
+    "jira",
+    "jira-api",
+    "mcp",
+    "model-context-protocol",
+    "typescript"
+  ],
+  "license": "MIT",
+  "securityPolicy": "SECURITY.md",
+  "privateVulnerabilityReporting": true
+}
