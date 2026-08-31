@@ -10,10 +10,13 @@ welcome.
 JAM ships as three packages at one lockstep version. Fixes go to the latest
 release; older versions are not patched.
 
-| Version | Supported |
+| Line | Supported |
 |---|---|
-| 1.0.x | yes |
-| < 1.0 | no |
+| The latest published release | yes |
+| Older releases | no — not maintained unless a security advisory says otherwise |
+
+Check what is latest with `npm view @jam-mcp/launcher version`, and what a
+machine runs with `jam runtime status --json`.
 
 ## Reporting a vulnerability
 
