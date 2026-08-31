@@ -5,12 +5,17 @@ is the same one rather than a reconstruction.
 
 ## The one invariant
 
-**A tag is created only after registry acceptance passes.**
+**A tag is created only after acceptance passes against the published packages.**
 
 A tag is a claim that the published artefacts work. Making it before the
 published artefacts have been exercised inverts that: it says "this is the
 release" about something nobody has run from the registry yet. npm versions are
 immutable, so the order is the only thing that keeps a tag honest.
+
+The pipeline now encodes this order instead of asking anyone to remember it:
+publishing (`release.yml`) and finalization (`release-finalize.yml`) are two
+separate dispatches, and only the second one - run after acceptance - creates
+the tag and the GitHub Release.
 
 ## The gate
 
@@ -51,15 +56,29 @@ registry source from running elsewhere.
 
 ## Procedure
 
-> **The canonical release path is remote.** Push a `v<version>` tag on a main
-> commit and `.github/workflows/release.yml` runs the gate, publishes all three
-> packages via npm Trusted Publishing (OIDC — no local login, no long-lived
-> token, no OTP), verifies the registry, and creates the GitHub Release.
-> The manual steps below (publish, registry confirmation, tag/Release creation)
-> are the **emergency fallback** for when GitHub Actions or OIDC is down; the
-> acceptance steps (2, 5, 6) remain human work either way. Prerequisite, once
+> **The canonical release path is remote, in two stages.**
+>
+> **Stage 1 — publish.** Dispatch `.github/workflows/release.yml` with the
+> version (it must equal the manifests on main HEAD). It runs the full gate,
+> publishes all three packages via npm Trusted Publishing (OIDC — no local
+> login, no long-lived token, no OTP), verifies the registry with
+> propagation-tolerant direct HTTP checks, and runs a published smoke. It
+> creates **no tag and no Release**.
+>
+> **Acceptance** (steps 2, 5, 6 below) then runs against the published
+> packages — human work, recorded in this file's format.
+>
+> **Stage 2 — finalize.** Dispatch `.github/workflows/release-finalize.yml`
+> with the same version. It verifies the registry already serves the version
+> and that `docs/releases/v<version>.md` exists with the mandatory sections,
+> then creates the **annotated tag** `JAM v<version>` and the GitHub Release
+> from that note. Both workflows take `dry_run`.
+>
+> The manual steps below (publish, registry confirmation, tag/Release
+> creation) are the **emergency fallback** for when GitHub Actions or OIDC is
+> down; the acceptance steps remain human work either way. Prerequisite, once
 > per package on npmjs.com: connect `colosair/jam` + `release.yml` as the
-> trusted publisher.
+> trusted publisher — which is why that filename must not change.
 
 1. **`npm run release:verify`** — on at least one machine, and on both platforms
    when anything platform-shaped changed (paths, process spawning, shims,
@@ -194,8 +213,9 @@ registry source from running elsewhere.
    established through whatever user-level intent that host offers instead. An
    A1 result recorded without that value cannot be compared to the next one.
 
-7. **Tag** the release commit and push the tag — after acceptance against the
-   published packages, never before. Acceptance closes in one of three ways:
+7. **Finalize** — dispatch `release-finalize.yml` (or, in the fallback, tag by
+   hand) only after acceptance against the published packages, never before.
+   Acceptance closes in one of three ways:
 
    ```text
    A0 pass     + Gate B pass                 release (A1 not exercised)
@@ -211,10 +231,17 @@ registry source from running elsewhere.
    carries its own message and its own author; a lightweight one is a name
    pointing at a commit, and the release it stands for has to be reconstructed
    from elsewhere. Both kinds are in this repository's history, which is the
-   argument for writing the rule down.
+   argument for the finalize workflow now creating the tag itself — the rule
+   stopped being a memory item. Existing lightweight tags stay as they are;
+   history is not rewritten.
 8. **GitHub Release** against that tag, titled `JAM v<version>` — the title is
    the same for every release, and what the release is about belongs in the
-   notes rather than in it.
+   notes rather than in it. The body is the checked-in
+   `docs/releases/v<version>.md`, authored in English with the mandatory
+   sections (What changed / Install / Upgrade / Agent setup / Compatibility /
+   Verified / Known limitations); `--generate-notes` output is at most a
+   supplementary changelog, never the body. `release:check` and the finalize
+   workflow both refuse a release without the note.
 
    Open with a paragraph or two, unheaded, saying what an agent or a person can
    now do that they could not before, and what did not change. Then the
@@ -247,10 +274,11 @@ repository has drifted on each of them at least once.
 - **The branch prefix matches the commit type.** A `docs(...)` change on a
   `fix/...` branch is a small lie in two places at once.
 
-Publishing stays a human step. CI is automatic; `npm publish` is not. An npm
-version cannot be taken back, the release cadence is low, and the manual cost is
-small — that trade will be worth revisiting when the cadence changes, together
-with provenance and trusted publishing.
+Publishing is automated (npm Trusted Publishing, OIDC) but never spontaneous:
+both stages run only on a maintainer's explicit dispatch, and an npm version
+cannot be taken back — which is exactly why the publish stage refuses a version
+that already exists on the registry, and why acceptance sits between publish
+and tag rather than after both.
 
 ## Recorded runs
 
