@@ -60,23 +60,34 @@ jobs:
         run: |
           for p in launcher server bootstrap; do (cd "packages/$p" && npm publish); done
 
+      # npm's client cache can answer with a stale 404 for a version published
+      # seconds earlier, and registry propagation has overrun a 5-minute window
+      # for real (asc v0.3.2, run 33353249629: publish succeeded, this step
+      # failed, Release was skipped — same step shape as here). Ask the registry
+      # over HTTP with caching off, and give propagation 15 minutes before
+      # calling it a failure.
       - name: registry verification
         run: |
           TAG="${GITHUB_REF_NAME#v}"
           for p in launcher server bootstrap; do
             ok=""
-            for i in $(seq 1 30); do
-              [ "$(npm view "@jam-mcp/$p@$TAG" version 2>/dev/null)" = "$TAG" ] && { ok=1; break; }
+            for i in $(seq 1 90); do
+              if curl -fs -m 20 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+                   -o /dev/null "https://registry.npmjs.org/@jam-mcp%2f$p/$TAG"; then
+                ok=1
+                echo "@jam-mcp/$p@$TAG visible after $(( (i - 1) * 10 ))s"
+                break
+              fi
               sleep 10
             done
-            [ -n "$ok" ] || { echo "::error::@jam-mcp/$p@$TAG never appeared on the registry"; exit 1; }
+            [ -n "$ok" ] || { echo "::error::@jam-mcp/$p@$TAG never appeared on the registry within 15 minutes"; exit 1; }
           done
 
       - name: published smoke
         run: |
           TAG="${GITHUB_REF_NAME#v}"
           PREFIX=$(mktemp -d)
-          npm install -g --prefix "$PREFIX" "@jam-mcp/launcher@$TAG"
+          npm install -g --prefer-online --prefix "$PREFIX" "@jam-mcp/launcher@$TAG"
           # `jam --help` writes usage to stderr - stdout belongs to the MCP
           # protocol. The v1.4.1 run piped stdout (empty) into grep and died on
           # grep's exit 1. Capture both streams, then grep the file.
