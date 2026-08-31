@@ -324,3 +324,46 @@ describe("setup repair — persistent-aware registration", () => {
     }
   });
 });
+
+// ── npx PATH 오염 (1.4.2 fresh-install 실측 결함) ────────────────────────────
+//
+// `npx --yes @jam-mcp/bootstrap@X` 는 자기 캐시의 node_modules/.bin 을 PATH 에
+// 앞세우고, 거기에는 jam shim 이 있다. 그 PATH 로 "global jam 존재"를 측정하면
+// 새 머신마다 있다고 답하고, setup 은 npx 종료와 함께 죽는 bare `jam serve` 를
+// 등록했다. persistentHostRunner 는 그 주입 경로를 벗겨낸 PATH 로만 측정한다.
+
+import { dirname, delimiter as pathDelimiter, join as joinPath } from "node:path";
+import { persistentHostRunner, defaultHostRunner } from "../../src/bootstrap/host-mcp.js";
+
+describe("persistentHostRunner — npx-injected PATH is not evidence", () => {
+  const nodeDir = dirname(process.execPath);
+  const npxBin = joinPath(nodeDir, "fake-cache", "_npx", "abc", "node_modules", ".bin");
+  const contaminated = [npxBin, nodeDir].join(pathDelimiter);
+
+  const withPath = (value: string, fn: () => HostRunResult): HostRunResult => {
+    const saved = process.env.PATH;
+    process.env.PATH = value;
+    try {
+      return fn();
+    } finally {
+      process.env.PATH = saved;
+    }
+  };
+
+  it("persistent runner strips package-runner entries before spawning", () => {
+    const result = withPath(contaminated, () =>
+      persistentHostRunner({ command: "node", args: ["-p", "process.env.PATH"] }),
+    );
+    expect(result.failed).toBe(false);
+    expect(result.stdout).not.toContain("_npx");
+    expect(result.stdout).toContain(nodeDir);
+  });
+
+  it("default runner keeps the caller's PATH (host CLI probes are not the lie)", () => {
+    const result = withPath(contaminated, () =>
+      defaultHostRunner({ command: "node", args: ["-p", "process.env.PATH"] }),
+    );
+    expect(result.failed).toBe(false);
+    expect(result.stdout).toContain("_npx");
+  });
+});

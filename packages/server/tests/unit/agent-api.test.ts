@@ -236,3 +236,37 @@ describe("auth status", () => {
     expect(out).not.toMatch(/apiToken|"token"|JIRA_API_TOKEN/);
   });
 });
+
+/**
+ * JAM-2 (SSAFESTA Windows 실측): apply 가 변경을 실행하고도
+ * status=already_configured + changesApplied=true 를 함께 돌려줬다.
+ * 두 필드가 서로를 부정하면 agent 는 어느 쪽이든 믿을 수 있다.
+ */
+describe("setup apply — status and changesApplied agree", () => {
+  it("변경을 실행한 apply 는 applied 라고 말한다", async () => {
+    const root = project();
+    const home = homeWithRuntime();
+    const applied = JSON.parse(
+      (
+        await capture(() =>
+          setupApplyCommand({ cwd: root, home, explicitKey: "PROJECT", ...authenticated() }),
+        )
+      ).out,
+    );
+    expect(applied.changesApplied).toBe(true);
+    expect(applied.status).toBe("applied");
+  });
+
+  it("실행할 변경이 없던 apply 만 already_configured 다", async () => {
+    const root = project();
+    const home = homeWithRuntime();
+    await capture(() =>
+      setupApplyCommand({ cwd: root, home, explicitKey: "PROJECT", ...authenticated() }),
+    );
+    const second = JSON.parse(
+      (await capture(() => setupApplyCommand({ cwd: root, home, ...authenticated() }))).out,
+    );
+    expect(second.changesApplied).toBe(false);
+    expect(second.status).toBe("already_configured");
+  });
+});

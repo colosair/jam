@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { shellInvocation } from "../bootstrap/shell-command.js";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { runHealthGate } from "../bootstrap/boot-health-gate.js";
@@ -226,10 +227,13 @@ async function installAndBuild(root: string): Promise<number> {
     { name: "Build", args: ["run", "build"] },
   ]) {
     line(`\n> npm ${step.args.join(" ")}`);
-    const res = spawnSync("npm", step.args, {
+    // npm is a .cmd shim on Windows; shellInvocation joins the validated argv
+    // because an args array plus shell:true is DEP0190.
+    const invocation = shellInvocation("npm", step.args);
+    const res = spawnSync(invocation.command, invocation.args, {
       cwd: root,
       stdio: "inherit",
-      shell: process.platform === "win32",
+      shell: invocation.shell,
     });
     if (res.status !== 0) {
       line(`[FAIL] ${step.name}`);

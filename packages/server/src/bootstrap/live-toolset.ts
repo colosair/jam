@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { shellInvocation } from "./shell-command.js";
 import { SERVER_VERSION } from "@jam-mcp/launcher";
 import { TOOL_NAMES } from "../mcp/create-server.js";
 
@@ -36,9 +37,12 @@ export const expectedTools = (): string[] => [...TOOL_NAMES].sort();
  */
 export const defaultToolsetProbe: ToolsetProbe = ({ command, args }) =>
   new Promise((resolve) => {
-    const child = spawn(command, args, {
+    // npm shims need a shell on Windows; the argv is joined by shellInvocation
+    // (validated bare tokens) because an args array plus shell:true is DEP0190.
+    const invocation = shellInvocation(command, args);
+    const child = spawn(invocation.command, invocation.args, {
       stdio: ["pipe", "pipe", "ignore"],
-      shell: process.platform === "win32",
+      shell: invocation.shell,
     });
 
     let buffer = "";
