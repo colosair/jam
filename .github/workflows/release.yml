@@ -86,7 +86,18 @@ jobs:
       - name: publish (launcher → server → bootstrap)
         run: |
           FLAGS=""
-          if ${{ inputs.dry_run }}; then FLAGS="--dry-run"; fi
+          if ${{ inputs.dry_run }}; then
+            FLAGS="--dry-run"
+            # npm refuses --dry-run over an already-published version too, and
+            # a released version is the only honest target a pipeline dry run
+            # has. Fall back to the packing check alone in that case.
+            V="${{ inputs.version }}"
+            if curl -fs -m 20 -o /dev/null "https://registry.npmjs.org/@jam-mcp%2flauncher/$V"; then
+              echo "dry run: $V is already on the registry — npm pack --dry-run only (a real publish would be refused by the version gate)"
+              for p in launcher server bootstrap; do (cd "packages/$p" && npm pack --dry-run); done
+              exit 0
+            fi
+          fi
           for p in launcher server bootstrap; do (cd "packages/$p" && npm publish $FLAGS); done
 
       # npm's client cache can answer with a stale 404 for a version published
