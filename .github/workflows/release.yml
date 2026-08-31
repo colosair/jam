@@ -1,8 +1,12 @@
-# The release path. A `v*` tag on a main commit is the trigger; gate, publish,
-# registry check and GitHub Release all happen here, authenticated by npm
-# Trusted Publishing (OIDC) — no local login, no long-lived token. Local
-# `npm publish` survives only as the emergency fallback in
-# docs/operations/release.md.
+# Stage 1 of 2: publish. Dispatched by a maintainer against main; it gates,
+# publishes all three packages via npm Trusted Publishing (OIDC), verifies the
+# registry, and runs a published smoke. It creates NO tag and NO GitHub Release
+# — those belong to release-finalize.yml, which runs only after acceptance
+# against the published artefacts (docs/operations/release.md: a tag is created
+# only after acceptance passes against the published packages).
+#
+# The filename stays release.yml because npm's trusted-publisher connection is
+# bound to repo + workflow filename. Renaming it breaks publishing silently.
 #
 # npm trusted-publishing contract (2026): GitHub-hosted runner, npm >= 11.5.1,
 # Node >= 22.14, `permissions.id-token: write`, and each package connected to
@@ -10,20 +14,33 @@
 name: Release
 
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (must equal the manifests on main HEAD, e.g. 1.4.4)'
+        required: true
+      dry_run:
+        description: 'Run every gate but publish with --dry-run and skip registry/smoke'
+        type: boolean
+        default: false
 
 permissions:
-  contents: write # GitHub Release
+  contents: read
   id-token: write # npm Trusted Publishing
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.version }}
 
 jobs:
-  release:
+  publish:
     runs-on: ubuntu-latest
     steps:
+      - name: refuse non-main refs
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::publish runs against main only (got ${GITHUB_REF})"
+          exit 1
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -37,20 +54,30 @@ jobs:
       # The runner's bundled npm can trail the trusted-publishing floor.
       - run: npm install -g npm@^11.5.1 && npm --version
 
-      - name: tag ↔ manifest ↔ main consistency
+      - name: version ↔ manifest consistency
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
+          V="${{ inputs.version }}"
           for p in launcher server bootstrap; do
-            V=$(node -p "require('./packages/$p/package.json').version")
-            [ "$V" = "$TAG" ] || { echo "::error::packages/$p is $V, tag says $TAG"; exit 1; }
+            M=$(node -p "require('./packages/$p/package.json').version")
+            [ "$M" = "$V" ] || { echo "::error::packages/$p is $M, dispatch says $V"; exit 1; }
           done
-          git fetch origin main
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
-            || { echo "::error::tag commit is not on main"; exit 1; }
+
+      # An immutable registry means a re-publish of the same version can only
+      # fail late and confusingly. Refuse it up front instead.
+      - name: version is not already published
+        if: ${{ !inputs.dry_run }}
+        run: |
+          V="${{ inputs.version }}"
+          for p in launcher server bootstrap; do
+            if curl -fs -m 20 -o /dev/null "https://registry.npmjs.org/@jam-mcp%2f$p/$V"; then
+              echo "::error::@jam-mcp/$p@$V already exists on the registry — bump the version instead"
+              exit 1
+            fi
+          done
 
       - run: npm ci
 
-      # Same gate as CI, re-run on the exact commit being released.
+      # Same gate as CI, re-run on the exact commit being published.
       - run: npm run release:verify
 
       # Dependency order per docs/operations/release.md: bootstrap pins the
@@ -58,50 +85,55 @@ jobs:
       # (circular), so their mutual order only follows the documented procedure.
       - name: publish (launcher → server → bootstrap)
         run: |
-          for p in launcher server bootstrap; do (cd "packages/$p" && npm publish); done
+          FLAGS=""
+          if ${{ inputs.dry_run }}; then FLAGS="--dry-run"; fi
+          for p in launcher server bootstrap; do (cd "packages/$p" && npm publish $FLAGS); done
 
       # npm's client cache can answer with a stale 404 for a version published
       # seconds earlier, and registry propagation has overrun a 5-minute window
-      # for real (asc v0.3.2, run 33353249629: publish succeeded, this step
-      # failed, Release was skipped — same step shape as here). Ask the registry
-      # over HTTP with caching off, and give propagation 15 minutes before
-      # calling it a failure.
+      # for real (asc v0.3.2: publish succeeded, the old verification failed,
+      # the Release was skipped). Ask the registry over HTTP with caching off,
+      # and give propagation 15 minutes before calling it a failure.
       - name: registry verification
+        if: ${{ !inputs.dry_run }}
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
+          V="${{ inputs.version }}"
           for p in launcher server bootstrap; do
             ok=""
             for i in $(seq 1 90); do
               if curl -fs -m 20 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
-                   -o /dev/null "https://registry.npmjs.org/@jam-mcp%2f$p/$TAG"; then
+                   -o /dev/null "https://registry.npmjs.org/@jam-mcp%2f$p/$V"; then
                 ok=1
-                echo "@jam-mcp/$p@$TAG visible after $(( (i - 1) * 10 ))s"
+                echo "@jam-mcp/$p@$V visible after $(( (i - 1) * 10 ))s"
                 break
               fi
               sleep 10
             done
-            [ -n "$ok" ] || { echo "::error::@jam-mcp/$p@$TAG never appeared on the registry within 15 minutes"; exit 1; }
+            [ -n "$ok" ] || { echo "::error::@jam-mcp/$p@$V never appeared on the registry within 15 minutes"; exit 1; }
           done
 
       - name: published smoke
+        if: ${{ !inputs.dry_run }}
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
+          V="${{ inputs.version }}"
           PREFIX=$(mktemp -d)
-          npm install -g --prefer-online --prefix "$PREFIX" "@jam-mcp/launcher@$TAG"
+          npm install -g --prefer-online --prefix "$PREFIX" "@jam-mcp/launcher@$V"
           # `jam --help` writes usage to stderr - stdout belongs to the MCP
-          # protocol. The v1.4.1 run piped stdout (empty) into grep and died on
-          # grep's exit 1. Capture both streams, then grep the file.
+          # protocol. Capture both streams, then grep the file (a pipe dies on
+          # grep's exit 1 under pipefail — seen on the v1.4.1 run).
           export HOME=$(mktemp -d)
           "$PREFIX/bin/jam" --help > help.out 2>&1
           grep -q "runs the configured JAM runtime" help.out
           "$PREFIX/bin/jam" runtime use package
           "$PREFIX/bin/jam" runtime status --json > status.json
-          node -e "const d=JSON.parse(require('fs').readFileSync('status.json')); if (d.mode !== 'package' || d.version !== process.argv[1]) { console.error(d); process.exit(1) }" "$TAG"
+          node -e "const d=JSON.parse(require('fs').readFileSync('status.json')); if (d.mode !== 'package' || d.version !== process.argv[1]) { console.error(d); process.exit(1) }" "$V"
 
-      - name: GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: what happens next
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --title "JAM $GITHUB_REF_NAME" \
-            --generate-notes
+          if ${{ inputs.dry_run }}; then
+            echo "Dry run complete. Nothing was published."
+          else
+            echo "Published @jam-mcp/{launcher,server,bootstrap}@${{ inputs.version }}."
+            echo "Run acceptance against the PUBLISHED packages (docs/operations/release.md),"
+            echo "then dispatch release-finalize.yml with the same version to tag and cut the Release."
+          fi
