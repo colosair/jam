@@ -259,6 +259,46 @@ process.stdout.write("\n@jam-mcp/launcher\n");
 
 // ----------------------------------------------- persistent (global install)
 
+process.stdout.write("\nExisting-user upgrade: previous published launcher -> this release\n");
+{
+  // 기존 사용자 계약의 회귀: 직전 published 버전이 만든 사용자 상태(runtime 선택)를
+  // 이번 배포본이 그대로 읽고, 전역 in-place 업그레이드 뒤 버전만 올라간다.
+  // 레지스트리에 닿지 못하면 건너뛰되, 건너뛰었다고 말한다.
+  const { dir, home, work } = sandbox("upgrade");
+  const prefix = join(home, ".npm-global");
+  mkdirSync(prefix, { recursive: true });
+  const currentVersion = JSON.parse(readFileSync(join(repoRoot, "packages", "launcher", "package.json"), "utf8")).version;
+  let previousVersion = null;
+  try {
+    const [viewFile, viewArgs] = forShell("npm", ["view", "@jam-mcp/launcher", "versions", "--json"]);
+    const versions = JSON.parse(execFileSync(viewFile, viewArgs, {
+      cwd: dir, encoding: "utf8", shell: process.platform === "win32", stdio: "pipe", timeout: 60_000,
+    }));
+    previousVersion = versions.filter((v) => v !== currentVersion).pop() ?? null;
+  } catch { previousVersion = null; }
+  if (previousVersion === null) {
+    process.stdout.write("  SKIP registry unreachable or no previous version - upgrade regression not exercised this run\n");
+  } else {
+    const [prevFile, prevArgs] = forShell("npm", ["install", "-g", "--no-audit", "--no-fund", `@jam-mcp/launcher@${previousVersion}`, `@jam-mcp/server@${previousVersion}`]);
+    execFileSync(prevFile, prevArgs, {
+      cwd: dir, env: isolatedEnv(home, { npm_config_prefix: prefix }), encoding: "utf8",
+      shell: process.platform === "win32", stdio: "pipe",
+    });
+    const jamBin = process.platform === "win32" ? join(prefix, "jam.cmd") : join(prefix, "bin", "jam");
+    runBin(jamBin, ["runtime", "use", "package"], { cwd: work, home });
+    const before = parseJson(runBin(jamBin, ["runtime", "status", "--json"], { cwd: work, home }).stdout);
+    check(`previous launcher ${previousVersion} runs and answers`, before?.version === previousVersion, JSON.stringify(before));
+    const [upFile, upArgs] = forShell("npm", ["install", "-g", "--no-audit", "--no-fund", tarball("jam-mcp-launcher"), tarball("jam-mcp-server")]);
+    execFileSync(upFile, upArgs, {
+      cwd: dir, env: isolatedEnv(home, { npm_config_prefix: prefix }), encoding: "utf8",
+      shell: process.platform === "win32", stdio: "pipe",
+    });
+    const after = parseJson(runBin(jamBin, ["runtime", "status", "--json"], { cwd: work, home }).stdout);
+    check(`in-place upgrade serves ${currentVersion} through the same command`, after?.version === currentVersion, JSON.stringify(after));
+    check("the runtime selection written by the previous version is preserved", after?.mode === "package", JSON.stringify(after?.mode));
+  }
+}
+
 process.stdout.write("\n@jam-mcp/launcher + server, installed like `npm install -g`\n");
 {
   // 영구 설치 계약: launcher 가 전역에 깔리면 서버가 그 곁에 함께 오고,

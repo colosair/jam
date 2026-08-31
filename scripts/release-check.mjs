@@ -116,10 +116,11 @@ for (const path of tracked) {
     // `<exact>`, `<version>` and friends are deliberately generic - prose that
     // stays true across releases rather than a version anyone types.
     if (pinned.startsWith("<") && pinned.endsWith(">")) continue;
-    // The release workflow's `@$TAG` resolves to the release version at run
-    // time - the workflow derives it from the tag it verifies. Only that exact
-    // variable; an arbitrary `$WORD` still fails below.
-    if (pinned === "$TAG") continue;
+    // The release workflows' `@$V` (and the pre-dispatch era's `@$TAG`)
+    // resolve to the release version at run time - the workflow verifies the
+    // value against the manifests before using it. Only those exact
+    // variables; an arbitrary `$WORD` still fails below.
+    if (pinned === "$TAG" || pinned === "$V") continue;
     // A floating or partial spec is worse than a stale one: it changes under
     // the reader, and npm resolves it to something nobody tested.
     if (/^(latest|next)$/.test(pinned) || /^[\^~]/.test(pinned) || !/^\d+\.\d+\.\d+$/.test(pinned)) {
@@ -214,6 +215,56 @@ const agentsBlock = mirrored("AGENTS.md");
 const claudeBlock = mirrored("CLAUDE.md");
 if (agentsBlock !== undefined && claudeBlock !== undefined && agentsBlock !== claudeBlock) {
   fail("AGENTS.md", `"${MIRROR_HEADING}" no longer matches CLAUDE.md word for word`);
+}
+
+// 7. The write surface named identically everywhere agents read.
+//
+// The operation count drifted once (three in AGENTS.md, five in CLAUDE.md, two
+// releases apart). Pin the five names and the count phrase in every agent doc.
+const WRITE_OPS = ["comment.add", "field.update", "status.transition", "assignee.update", "issue.create"];
+for (const path of AGENT_DOCS) {
+  const text = read(path);
+  for (const op of WRITE_OPS) {
+    if (!text.includes(op)) fail(path, `write operation ${op} is not named - the write surface has drifted`);
+  }
+  if (!text.includes("Five operations")) fail(path, 'the write surface is not stated as "Five operations"');
+}
+
+// 8. CLAUDE.md is AGENTS.md plus host-specific detail, never minus a section.
+const agentHeadings = [...read("AGENTS.md").matchAll(/^## .+$/gm)].map((m) => m[0]);
+const claudeText = read("CLAUDE.md");
+for (const heading of agentHeadings) {
+  if (!claudeText.includes(heading)) fail("CLAUDE.md", `missing section from AGENTS.md: "${heading}"`);
+}
+
+// 9. The Release body is authored, not generated.
+//
+// release-finalize.yml creates the GitHub Release from docs/releases/v<version>.md.
+// A missing or unstructured note fails here first, so the release-prep PR carries
+// it rather than someone writing it into a web form later.
+const notePath = `docs/releases/v${version}.md`;
+let note = null;
+try {
+  note = read(notePath);
+} catch {
+  note = null;
+}
+if (note === null) {
+  fail(notePath, "missing - the Release body is authored, not generated");
+} else {
+  for (const section of [
+    "## What changed",
+    "## Install / Upgrade",
+    "## Agent setup",
+    "## Compatibility",
+    "## Verified",
+    "## Known limitations",
+  ]) {
+    if (!note.includes(section)) fail(notePath, `lacks required section: ${section}`);
+  }
+  if (!note.includes(version)) fail(notePath, `never names ${version}`);
+  if (/[가-힣]/.test(note)) fail(notePath, "public release artefacts are English (Hangul found)");
+  if (!note.includes(`@jam-mcp/bootstrap@${version}`)) fail(notePath, "does not pin the bootstrap install command");
 }
 
 if (problems.length === 0) {
