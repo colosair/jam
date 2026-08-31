@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
+import { tempDir } from "../support/temp.js";
 import { describe, expect, it } from "vitest";
 import type { SecretStore, StoredCredentials } from "../../src/adapters/credentials/secret-store.js";
 import { runSetupWizard, type WizardOptions } from "../../src/cli/setup-wizard.js";
@@ -16,7 +16,7 @@ const EMAIL = "user@example.com";
 const stored: StoredCredentials = { baseUrl: BASE_URL, email: EMAIL, apiToken: SECRET };
 
 function tmp(prefix: string): string {
-  return mkdtempSync(join(tmpdir(), prefix));
+  return tempDir(prefix);
 }
 
 /** A project root with a runtime already chosen, so runtime never blocks. */

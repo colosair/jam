@@ -1,7 +1,10 @@
-import { mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir, homedir } from "node:os";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanupNow, tempDir } from "../../server/tests/support/temp.js";
+
+afterAll(() => cleanupNow());
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/cli.js";
 import { readRuntimeConfig } from "../src/runtime-config.js";
 
@@ -16,7 +19,7 @@ import { readRuntimeConfig } from "../src/runtime-config.js";
  */
 
 function sandboxHome(): string {
-  const home = mkdtempSync(join(tmpdir(), "jam-launcher-home-"));
+  const home = tempDir("jam-launcher-home-");
   process.env["HOME"] = home;
   process.env["USERPROFILE"] = home;
   return home;

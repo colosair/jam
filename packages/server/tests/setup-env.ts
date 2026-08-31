@@ -1,4 +1,5 @@
 import { mkdtempSync } from "node:fs";
+import { track } from "./support/temp.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,6 +12,7 @@ import { join } from "node:path";
  * Injection stays the rule; this is the backstop for when it is missed.
  */
 const sandbox = mkdtempSync(join(tmpdir(), "jam-test-home-"));
+track(sandbox);
 
 process.env["HOME"] = sandbox;
 process.env["USERPROFILE"] = sandbox;
@@ -35,3 +37,4 @@ if (!process.env["JAM_INTEGRATION"]) {
   process.env["JAM_DISABLE_SECRET_STORE"] = "1";
   process.env["JAM_DISABLE_USER_ENV"] = "1";
 }
+

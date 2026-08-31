@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { tempDir } from "../support/temp.js";
 import { describe, expect, it } from "vitest";
 import { SERVER_VERSION } from "@jam-mcp/launcher";
 import { LAUNCHER_PACKAGE_SPEC } from "../../src/bootstrap/mcp-config-merger.js";
@@ -21,7 +21,7 @@ import type { CredentialPort } from "../../src/ports/credentials.port.js";
 import { snapshot } from "../helpers.js";
 
 function tmp(prefix: string): string {
-  return mkdtempSync(join(tmpdir(), prefix));
+  return tempDir(prefix);
 }
 
 /** A project root that looks like a repo but has no JAM wiring yet. */

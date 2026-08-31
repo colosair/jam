@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -69,7 +68,7 @@ const configuredCredentials: CredentialPort = {
 };
 
 function tmp(prefix: string): string {
-  return mkdtempSync(join(tmpdir(), prefix));
+  return tempDir(prefix);
 }
 
 function fixture(): { root: string; home: string } {
@@ -333,6 +332,7 @@ describe("setup repair — persistent-aware registration", () => {
 // 등록했다. persistentHostRunner 는 그 주입 경로를 벗겨낸 PATH 로만 측정한다.
 
 import { dirname, delimiter as pathDelimiter, join as joinPath } from "node:path";
+import { tempDir } from "../support/temp.js";
 import { persistentHostRunner, defaultHostRunner } from "../../src/bootstrap/host-mcp.js";
 
 describe("persistentHostRunner — npx-injected PATH is not evidence", () => {

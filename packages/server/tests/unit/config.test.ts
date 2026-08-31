@@ -1,12 +1,12 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tempDir } from "../support/temp.js";
 import { describe, expect, it } from "vitest";
 import { findConfigPath, loadConfig } from "../../src/config/load-config.js";
 import { ProjectConfigSchema } from "../../src/config/schema.js";
 
 function projectDir(yaml: string): string {
-  const root = mkdtempSync(join(tmpdir(), "jam-config-"));
+  const root = tempDir("jam-config-");
   mkdirSync(join(root, ".jira-agent"), { recursive: true });
   writeFileSync(join(root, ".jira-agent", "project.yaml"), yaml, "utf8");
   return root;
@@ -41,7 +41,7 @@ describe("loadConfig", () => {
   });
 
   it("falls back to defaults when there is no config at all", () => {
-    const empty = mkdtempSync(join(tmpdir(), "jam-empty-"));
+    const empty = tempDir("jam-empty-");
     const loaded = loadConfig(empty);
     expect(loaded.path).toBeUndefined();
     expect(loaded.config.project.key).toBe("");
