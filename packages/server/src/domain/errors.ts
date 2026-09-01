@@ -43,6 +43,12 @@ export const JAM_ERROR_CODES = [
   "JAM_WRITE_ASSIGNEE_AMBIGUOUS",
   "JAM_WRITE_ASSIGNEE_NOT_ASSIGNABLE",
   "JAM_WRITE_ASSIGNEE_ALREADY_SET",
+  // Custom fields. Three permissions have to line up and none implies another,
+  // so a refusal says which one is missing: the team never opted this field in,
+  // Jira will not let it be set on this issue, or JAM does not know the type
+  // well enough to write it. Each points somewhere different.
+  "JAM_WRITE_CUSTOM_FIELD_NOT_EDITABLE",
+  "JAM_WRITE_CUSTOM_FIELD_TYPE_UNSUPPORTED",
   "JAM_WRITE_PLAN_NOT_FOUND",
   "JAM_WRITE_PLAN_EXPIRED",
   "JAM_WRITE_CONFLICT",

@@ -72,15 +72,27 @@ agent could smuggle a change JAM has not looked at. What "Done" means is settled
 during planning — JAM asks Jira which transitions this issue actually offers and
 resolves the id, rather than guessing one from a status name.
 
-Five operations, and a fixed field whitelist:
+Six operations, and a fixed field whitelist:
 
 ```text
 comment.add        { "text": "..." }         plain text; JAM converts it, ADF is not accepted
 field.update       summary, priority, labels, components
 status.transition  { "status": "Done" }      matched against Jira's available transitions
 assignee.update    { "assignee": "..." }     resolved against Jira's user directory
+custom-field.update { "field": "...", "value": ... }  one field the project opted in
 issue.create       issueType, summary + description, priority, labels, components
 ```
+
+`custom-field.update` needs three separate permissions to line up, and none
+implies another. The team has to opt the field in by its exact id with
+`writable: true` — being readable does not make a field writable, and a
+whitelist written before this release grants no writes. Jira has to offer the
+field on that issue for that account with `set` among its operations, which JAM
+asks rather than models. And the field has to be a type JAM can write:
+single-line text, number, single-select or multi-select. Dates, rich text, user
+pickers and app-owned fields are refused rather than attempted. Types are never
+converted, options are matched exactly and written by option id, and clearing a
+field is not supported.
 
 `assignee.update` never sends the name you pass. Jira's user search is a
 substring match, so JAM treats what comes back as candidates and assigns only

@@ -95,6 +95,31 @@ held is not a permission that still holds. Verification compares the
 assignment as proof of the right one's, which is the failure the whole
 resolution step exists to prevent.
 
+**Readable is not writable.** The project config has carried a custom-field
+whitelist since JAM could only read, and `custom-field.update` does not inherit
+it. A field needs `writable: true` on its own entry, so upgrading JAM never
+widens what an agent may change, and "we let it see this" stays a different
+decision from "we let it change this". Uniqueness is enforced in the config
+schema rather than at resolution time: a selector has to name one field, and
+two rows answering to it would make ordering decide which one gets written.
+
+**Editability is asked, once, of the endpoint that knows.** Whether a custom
+field applies here depends on the project, the issue type, the field's
+contexts, the screen and the caller's permissions. JAM models none of it and
+asks `GET /issue/{key}/editmeta`, which answers all of it for this issue and
+this account - and does so without the administrator rights the field-context
+APIs would need. Type, editability and allowed values come from that one
+answer.
+
+**Four families, and everything else refused.** Text, number, single-select and
+multi-select have wire shapes JAM can produce from a plain value and recognise
+afterwards. A date needs a timezone policy, rich text needs ADF, a user picker
+needs identity resolution, an app-owned field has private semantics. Posting an
+unclassified type to see what happens would make a Jira 400 into JAM's schema
+discovery, and the times it did not 400 would be worse. Options are identity,
+not label: chosen by id, compared by id, and a renamed option invalidates a
+plan because the label is what a human agreed to.
+
 **Confirmation is a single-issue GET.** ConsistencyPolicy's "direct issue read"
 is `JiraReadPort.getIssue` - `GET /rest/api/3/issue/{key}` - not the bulk
 `getIssues` the read tools use. A bulk endpoint takes a list and is free to

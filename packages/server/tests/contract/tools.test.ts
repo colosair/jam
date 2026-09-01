@@ -109,6 +109,7 @@ describe("tool contract", () => {
       "field.update",
       "status.transition",
       "assignee.update",
+      "custom-field.update",
       "issue.create",
     ]);
     // `key` is not required, because issue.create has no issue to name. The
@@ -125,6 +126,41 @@ describe("tool contract", () => {
       arguments: {
         operation: "issue.create",
         input: { issueType: "Task", summary: "x", assignee: "someone" },
+      },
+    });
+
+    expect(payload(result)).toMatchObject({
+      error: { code: "JAM_WRITE_FIELD_NOT_ALLOWED", details: { rejected: ["assignee"] } },
+    });
+  });
+
+  it("refuses a custom-field value shape the contract never admitted", async () => {
+    // Loudly, at the schema: `value` is a string, a number, or an array of
+    // strings, and an object is none of them. The failure mode being guarded
+    // against is the silent one - a key that vanishes on the way in.
+    const result = (await client.callTool({
+      name: "jira_write_plan",
+      arguments: {
+        key: "PROJECT-97",
+        operation: "custom-field.update",
+        input: { field: "Notes", value: { id: "10012" } },
+      },
+    })) as { isError?: boolean; content: { text: string }[] };
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toMatch(/value/);
+  });
+
+  it("hands an unknown custom-field key to JAM rather than dropping it", async () => {
+    // The same boundary problem as issue.create. `input` is shared across
+    // operations, so another operation's key is a plausible mistake - and a
+    // dropped one would plan a write the caller did not describe.
+    const result = await client.callTool({
+      name: "jira_write_plan",
+      arguments: {
+        key: "PROJECT-97",
+        operation: "custom-field.update",
+        input: { field: "Notes", value: "hello", assignee: "Someone" },
       },
     });
 

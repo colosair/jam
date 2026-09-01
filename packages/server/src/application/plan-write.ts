@@ -4,6 +4,11 @@ import { JamError } from "../domain/errors.js";
 import type {
   AssigneeCandidate,
   AssigneeUpdateInput,
+  CustomFieldKind,
+  CustomFieldRequirements,
+  CustomFieldUpdateInput,
+  CustomFieldValueView,
+  EditFieldOption,
   CommentAddInput,
   ExistingIssueOperation,
   ExistingIssueWritePlan,
@@ -28,6 +33,12 @@ import {
   exactMatches,
   resolveAssignee,
 } from "../policy/assignee-policy.js";
+import {
+  assertEditable,
+  classifyKind,
+  resolveCustomFieldValue,
+  resolveWritableField,
+} from "../policy/custom-field-policy.js";
 import { planCreateIssue } from "./plan-create-issue.js";
 
 export type PlanWriteRequest = {
@@ -72,16 +83,19 @@ export async function planWrite(
   // answer.
   const input = validateInput(operation, request.input);
 
-  const snapshot = await readIssue(deps, issueKey);
+  // Which custom field the whitelist says this is, settled before the read so
+  // the read can fetch its current value in the same request. A selector the
+  // team never opted in costs no Jira call at all.
+  const targetField =
+    operation === "custom-field.update"
+      ? resolveWritableField(deps.config, (input as CustomFieldUpdateInput).field)
+      : undefined;
+
+  const snapshot = await readIssue(deps, issueKey, targetField ? [targetField.id] : []);
   const issue = snapshot.issue;
 
-  const { before, intendedAfter, mutation, transition, baseAssigneeAccountId } = await describe(
-    deps,
-    operation,
-    issueKey,
-    snapshot,
-    input,
-  );
+  const { before, intendedAfter, mutation, transition, baseAssigneeAccountId, customFieldRequirements } =
+    await describe(deps, operation, issueKey, snapshot, input, targetField);
 
   const createdAt = new Date();
   const plan = deps.writePlans.create({
@@ -96,6 +110,7 @@ export async function planWrite(
     expiresAt: new Date(createdAt.getTime() + PLAN_TTL_MS).toISOString(),
     ...(transition ? { transition } : {}),
     ...(baseAssigneeAccountId ? { baseAssigneeAccountId } : {}),
+    ...(customFieldRequirements ? { customFieldRequirements } : {}),
     mutation,
   }) as ExistingIssueWritePlan;
 
@@ -130,10 +145,16 @@ export type IssueSnapshot = {
   issue: FullIssueContext;
   /** Identity of the current assignee, which `issue.assignee` cannot supply. */
   assigneeAccountId?: string;
+  /** Raw values for any custom field ids that were asked for. */
+  customFieldValues?: Record<string, unknown>;
 };
 
-export async function readIssue(deps: JamDeps, issueKey: string): Promise<IssueSnapshot> {
-  const { issue: found, assigneeAccountId } = await deps.jira.getIssue({
+export async function readIssue(
+  deps: JamDeps,
+  issueKey: string,
+  extraFields: string[] = [],
+): Promise<IssueSnapshot> {
+  const { issue: found, assigneeAccountId, customFieldValues } = await deps.jira.getIssue({
     key: issueKey,
     // `issuetype` and `description` are here for creation's verification step,
     // which has to confirm the issue Jira made is the one that was asked for.
@@ -150,6 +171,10 @@ export async function readIssue(deps: JamDeps, issueKey: string): Promise<IssueS
       "labels",
       "components",
       "updated",
+      // A custom field is only read when one is being written, and then only
+      // that one - so a custom-field update still costs a single direct GET
+      // rather than a second read for the field it is about to change.
+      ...extraFields.filter((f) => !BASE_WRITE_FIELDS.has(f)),
     ],
   });
 
@@ -160,8 +185,25 @@ export async function readIssue(deps: JamDeps, issueKey: string): Promise<IssueS
       { issueKey },
     );
   }
-  return { issue: found, ...(assigneeAccountId ? { assigneeAccountId } : {}) };
+  return {
+    issue: found,
+    ...(assigneeAccountId ? { assigneeAccountId } : {}),
+    ...(customFieldValues ? { customFieldValues } : {}),
+  };
 }
+
+/** Requested on every write-plane read, so an extra field is never a duplicate. */
+const BASE_WRITE_FIELDS = new Set([
+  "summary",
+  "status",
+  "issuetype",
+  "description",
+  "assignee",
+  "priority",
+  "labels",
+  "components",
+  "updated",
+]);
 
 /**
  * The issue an existing-issue operation names, or a refusal that says why.
@@ -216,6 +258,45 @@ function validateInput(operation: ExistingIssueOperation, raw: Record<string, un
       }
       return { status: status.trim() };
     }
+    case "custom-field.update": {
+      // Anything outside this operation's own two keys is refused rather than
+      // ignored. Silently dropping a key an agent supplied is how a caller
+      // ends up with a write that is not the one it described - and the shared
+      // input object means another operation's key is a plausible mistake.
+      const extra = Object.keys(raw).filter(
+        (k) => raw[k] !== undefined && k !== "field" && k !== "value",
+      );
+      if (extra.length > 0) {
+        throw new JamError(
+          "JAM_WRITE_FIELD_NOT_ALLOWED",
+          `custom-field.update takes only \`field\` and \`value\`. Remove: ${extra.join(", ")}.`,
+          { operation, rejected: extra },
+        );
+      }
+
+      const { field, value } = raw as CustomFieldUpdateInput;
+      if (typeof field !== "string" || field.trim().length === 0) {
+        throw new JamError(
+          "JAM_WRITE_OPERATION_NOT_ALLOWED",
+          "custom-field.update needs non-empty `input.field` - a configured custom field id or name.",
+          { operation },
+        );
+      }
+      // The value's family is checked against Jira's schema later; what is
+      // checked here is that it is a shape the contract admits at all. An
+      // object, a boolean or a null never reaches the type policy.
+      const isString = typeof value === "string";
+      const isNumber = typeof value === "number";
+      const isStringArray = Array.isArray(value) && value.every((v) => typeof v === "string");
+      if (!isString && !isNumber && !isStringArray) {
+        throw new JamError(
+          "JAM_WRITE_OPERATION_NOT_ALLOWED",
+          "custom-field.update needs `input.value` to be a string, a number, or an array of strings.",
+          { operation, received: Array.isArray(value) ? "array" : typeof value },
+        );
+      }
+      return { field: field.trim(), value };
+    }
     case "assignee.update": {
       const assignee = (raw as AssigneeUpdateInput).assignee;
       if (typeof assignee !== "string" || assignee.trim().length === 0) {
@@ -236,12 +317,14 @@ async function describe(
   issueKey: string,
   snapshot: IssueSnapshot,
   input: WriteInput,
+  targetField?: { id: string; name: string },
 ): Promise<{
   before: Record<string, unknown>;
   intendedAfter: Record<string, unknown>;
   mutation: WriteMutation;
   transition?: ExistingIssueWritePlan["transition"];
   baseAssigneeAccountId?: string;
+  customFieldRequirements?: CustomFieldRequirements;
 }> {
   const issue = snapshot.issue;
   switch (operation) {
@@ -283,6 +366,43 @@ async function describe(
         intendedAfter: { status: transition.to },
         mutation: { kind: "transition", transitionId: transition.id },
         transition,
+      };
+    }
+
+    case "custom-field.update": {
+      const field = targetField!;
+      const requested = input as CustomFieldUpdateInput;
+
+      // Jira decides what is editable here and now, and in what shape. JAM
+      // does not model project contexts, screens or permissions - it asks the
+      // one endpoint that answers all three at once for this issue.
+      const metadata = await deps.jiraEditMetadata.getEditableFields(issueKey);
+      const editable = assertEditable(issueKey, field, metadata);
+      const kind = classifyKind(editable);
+
+      const { jiraValue, view, resolvedOptions } = resolveCustomFieldValue(
+        editable,
+        kind,
+        requested,
+      );
+
+      return {
+        before: {
+          customField: currentCustomFieldView(
+            field,
+            kind,
+            snapshot.customFieldValues?.[field.id],
+          ),
+        },
+        intendedAfter: { customField: view },
+        mutation: { kind: "custom-field", fieldId: field.id, value: jiraValue },
+        customFieldRequirements: {
+          fieldId: field.id,
+          fieldName: field.name,
+          kind,
+          schema: editable.schema,
+          ...(resolvedOptions ? { resolvedOptions } : {}),
+        },
       };
     }
 
@@ -356,6 +476,38 @@ function currentValue(issue: FullIssueContext, field: string): unknown {
     default:
       return undefined;
   }
+}
+
+/**
+ * What the field holds now, in the shape a receipt shows.
+ *
+ * Jira stores an option as an object and a scalar as itself; a person reading
+ * `before` wants the same canonical form they will see in `intendedAfter`, so
+ * they can compare the two rather than a payload against a summary.
+ */
+export function currentCustomFieldView(
+  field: { id: string; name: string },
+  kind: CustomFieldKind,
+  raw: unknown,
+): CustomFieldValueView {
+  const named = { id: field.id, name: field.name };
+
+  if (kind === "multi-option") {
+    return { ...named, value: Array.isArray(raw) ? raw.map(toOptionView) : [] };
+  }
+  if (kind === "single-option") {
+    return { ...named, value: raw == null ? null : toOptionView(raw) };
+  }
+  if (raw == null) return { ...named, value: null };
+  return { ...named, value: kind === "number" ? Number(raw) : String(raw) };
+}
+
+function toOptionView(raw: unknown): EditFieldOption {
+  const o = raw as { id?: unknown; value?: unknown; name?: unknown };
+  const id = typeof o?.id === "string" ? o.id : typeof o?.id === "number" ? String(o.id) : "";
+  const label =
+    typeof o?.value === "string" ? o.value : typeof o?.name === "string" ? o.name : String(raw);
+  return { id, label };
 }
 
 /** Whitelisted values to the shapes Jira's field API expects. */

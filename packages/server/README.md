@@ -31,13 +31,14 @@ refuses to report success unless the intended result is actually there. An
 ambiguous failure is reported as uncertain rather than retried — retrying a
 write that may have landed is how one comment becomes two.
 
-Five operations: `comment.add` (plain text, converted to ADF here),
+Six operations: `comment.add` (plain text, converted to ADF here),
 `field.update` (summary, priority, labels, components), `status.transition`
 (matched against the transitions Jira currently offers, never a guessed id),
 `assignee.update` (resolved to an account by exact display name or accountId,
-never a substring match), and `issue.create` (planned against the project's own
-create schema, so an unavailable issue type is a refusal here rather than a
-Jira 400 later).
+never a substring match), `custom-field.update` (one field the project opted in
+with `writable: true`, of a type JAM writes, that Jira offers `set` for on this
+issue), and `issue.create` (planned against the project's own create schema, so
+an unavailable issue type is a refusal here rather than a Jira 400 later).
 
 ## Evidence boundary
 
