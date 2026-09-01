@@ -72,7 +72,8 @@ export async function setup(options: SetupOptions = {}): Promise<number> {
   if (
     plan.code === "JAM_PROJECT_CONFIG_INVALID" ||
     plan.code === "JAM_MCP_CONFIG_UNREADABLE" ||
-    plan.code === "JAM_BINDINGS_UNREADABLE"
+    plan.code === "JAM_BINDINGS_UNREADABLE" ||
+    plan.code === "JAM_PROJECT_KEY_CONFLICT"
   ) {
     line(`[FAIL] ${describeBlockingCode(plan)}`);
     return 1;
@@ -176,6 +177,16 @@ function reportApplied(applied: ReturnType<typeof applySetupPlan>["applied"], pl
 }
 
 function describeBlockingCode(plan: SetupPlan): string {
+  if (plan.code === "JAM_PROJECT_KEY_CONFLICT") {
+    // Both sides named, and no suggestion to delete the repository's file -
+    // which project this repository belongs to is the team's decision.
+    return [
+      `This repository declares ${plan.existing?.key} in .jira-agent/project.yaml,`,
+      `but --project asked for ${plan.requested?.key}. JAM will not overwrite the`,
+      "committed key. Either drop --project to use the repository's, or change",
+      "the repository's project.yaml with the team and re-run.",
+    ].join(" ");
+  }
   if (plan.code === "JAM_PROJECT_CONFIG_INVALID") {
     return "The project's .jira-agent/project.yaml could not be parsed. Fix it and re-run.";
   }

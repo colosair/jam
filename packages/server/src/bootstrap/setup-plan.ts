@@ -16,7 +16,17 @@ export type SetupCode =
   | "JAM_RUNTIME_CONFIG_MISSING"
   | "JAM_PROJECT_CONFIG_INVALID"
   | "JAM_MCP_CONFIG_UNREADABLE"
-  | "JAM_MIGRATION_TARGET_UNAVAILABLE";
+  | "JAM_MIGRATION_TARGET_UNAVAILABLE"
+  | "JAM_PROJECT_KEY_CONFLICT";
+
+/**
+ * Where a project key came from. `repository` is the team's committed
+ * `.jira-agent/project.yaml`; the rest are this user's own settings, in the
+ * precedence order `decideProjectKey` applies.
+ */
+export type KeySource = BootstrapSource | "repository";
+
+export type KeyOrigin = { key: string; source: KeySource };
 
 export type SetupChange =
   | {
@@ -24,7 +34,7 @@ export type SetupChange =
       target: "project-config";
       path: string;
       key: string;
-      keySource: BootstrapSource;
+      keySource: KeySource;
     }
   | { type: "create"; target: "mcp-config"; path: string }
   | { type: "merge"; target: "mcp-config"; path: string; preserveExisting: string[] }
@@ -35,7 +45,7 @@ export type SetupChange =
       path: string;
       workspaceId: string;
       key: string;
-      keySource: BootstrapSource;
+      keySource: KeySource;
       /** Present on a rebind, so the preview shows what is being replaced. */
       previousKey?: string;
     }
@@ -93,7 +103,10 @@ export type SetupPlan = {
     userCommand?: string;
     env?: string[];
   };
-  project?: { root: string; key?: string };
+  project?: { root: string; key?: string; keySource?: KeySource };
+  /** On JAM_PROJECT_KEY_CONFLICT: what was asked for, and what already stands. */
+  requested?: KeyOrigin;
+  existing?: KeyOrigin;
 };
 
 export type PlanOptions = {
@@ -170,7 +183,24 @@ export function computeSetupPlan(state: SetupState, options: PlanOptions = {}): 
     };
   }
 
-  const project = { root: state.project.root, key: key.key };
+  // The repository's committed key is the team's answer. When a personal
+  // `--project` disagrees with it, neither side may win silently: overwriting
+  // the repository is not setup's call, and quietly using the repository key
+  // makes the flag a lie. Stop, and name both sources.
+  const conflict = keyConflict(state, options, key);
+  if (conflict) {
+    return {
+      status: "user_action_required",
+      code: "JAM_PROJECT_KEY_CONFLICT",
+      changes: [],
+      requiresUserAction: true,
+      requested: conflict.requested,
+      existing: conflict.existing,
+      project: { root: state.project.root, key: conflict.existing.key, keySource: conflict.existing.source },
+    };
+  }
+
+  const project = { root: state.project.root, key: key.key, keySource: key.source };
 
   if (!shared) {
     // Personal scope: the record of "this workspace is that Jira project"
@@ -319,7 +349,7 @@ function planHostChanges(state: SetupState): SetupChange[] {
  */
 function planBindingChange(
   state: SetupState,
-  key: { key: string; source: BootstrapSource },
+  key: KeyOrigin,
 ): SetupChange | undefined {
   if (state.project.key) return undefined;
 
@@ -337,13 +367,12 @@ function planBindingChange(
   };
 }
 
-function resolveKey(
-  state: SetupState,
-  options: PlanOptions,
-): { key: string; source: BootstrapSource } | undefined {
+function resolveKey(state: SetupState, options: PlanOptions): KeyOrigin | undefined {
   // An existing project.yaml wins: setup must never silently repoint a project,
-  // and a personal note must never override what the team committed.
-  if (state.project.key) return { key: state.project.key, source: "explicit" };
+  // and a personal note must never override what the team committed. It is
+  // labelled `repository` rather than `explicit` - a reader has to be able to
+  // tell the team's committed answer from what someone typed.
+  if (state.project.key) return { key: state.project.key, source: "repository" };
 
   const decideOptions: Parameters<typeof decideProjectKey>[1] = {};
   if (options.explicitKey) decideOptions.explicitKey = options.explicitKey;
@@ -352,6 +381,27 @@ function resolveKey(
   if (options.presetsPath) decideOptions.presetsPath = options.presetsPath;
 
   return decideProjectKey(state.project.root, decideOptions);
+}
+
+/**
+ * A repository key and an explicit `--project` that disagree. Personal
+ * sources are not conflicts: explicit already beats them in decideProjectKey,
+ * and a stale binding is repaired rather than reported.
+ */
+function keyConflict(
+  state: SetupState,
+  options: PlanOptions,
+  resolved: { key: string; source: KeySource },
+): { requested: KeyOrigin; existing: KeyOrigin } | undefined {
+  const explicit = options.explicitKey?.trim();
+  if (!explicit) return undefined;
+  const repository = state.project.key;
+  if (!repository || repository === explicit) return undefined;
+  void resolved;
+  return {
+    requested: { key: explicit, source: "explicit" },
+    existing: { key: repository, source: "repository" },
+  };
 }
 
 function planMcpChange(state: SetupState, options: PlanOptions): SetupChange | undefined {

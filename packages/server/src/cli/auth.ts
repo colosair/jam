@@ -203,7 +203,8 @@ export function authLogoutCommand(options: AuthOptions = {}): number {
  * credential unreachable, and the resulting split shows up as "mixed".
  */
 function reportOverride(ui: Ui, port: CredentialPort): void {
-  const source = port.describe().source;
+  const described = port.describe();
+  const source = described.source;
   if (source === "secret-store") return;
 
   if (source === "mixed") {
@@ -212,6 +213,7 @@ function reportOverride(ui: Ui, port: CredentialPort): void {
     ui.warn("Current JIRA_* environment variables override the stored credentials");
   }
   ui.line(`  Effective source: ${source}`);
+  for (const line of fieldSourceLines(described)) ui.line(line);
   ui.line("  Unset them to use what was just stored.");
 }
 
@@ -231,6 +233,7 @@ function reportRemaining(ui: Ui, port: CredentialPort): void {
       : "Part of a Jira credential still resolves from outside the secret store",
   );
   ui.line(`  Effective source: ${described.source}`);
+  for (const line of fieldSourceLines(described)) ui.line(line);
   ui.line("  Unset JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN to finish logging out.");
 }
 
@@ -270,4 +273,16 @@ export function toJiraOrigin(input: string): string | undefined {
     return undefined;
   }
   return url.protocol === "http:" || url.protocol === "https:" ? url.origin : undefined;
+}
+
+/**
+ * Which field came from where. "mixed" on its own tells a reader that
+ * something is split without telling them what, so they go looking - these
+ * lines answer it. Field names and source names only: a credential value is
+ * never printed.
+ */
+function fieldSourceLines(described: { sources?: Record<string, string> }): string[] {
+  const sources = described.sources;
+  if (!sources) return [];
+  return Object.entries(sources).map(([field, from]) => `    ${field}: ${from}`);
 }

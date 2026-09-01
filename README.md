@@ -248,6 +248,36 @@ compound one, so `npx ... setup --agent 2>&1 | tail -60` matches no rule
 written for `npx ... setup --agent`. A wrapper takes away the one thing that
 could have let it through.
 
+### Deterministic project setup
+
+`--project <KEY>` decides the key for that run. It beats every personal
+source, so a machine carrying an old binding, an exported `JAM_PROJECT_KEY`,
+or a legacy preset entry needs no hand-editing first — the stale binding is
+replaced as part of the plan:
+
+```bash
+npx --yes @jam-mcp/bootstrap@1.4.3 setup --agent --project PROJECT
+```
+
+The one source it does not override is the repository's own committed
+`.jira-agent/project.yaml`. When the two disagree, setup stops and names both
+sides rather than picking one:
+
+```json
+{
+  "status": "user_action_required",
+  "code": "JAM_PROJECT_KEY_CONFLICT",
+  "requested": { "key": "PROJECT", "source": "explicit" },
+  "existing":  { "key": "OTHER",   "source": "repository" }
+}
+```
+
+Which Jira project a repository belongs to is the team's decision, so resolve
+it with them — drop `--project` to use the committed key, or change
+`project.yaml` and re-run. Sources are reported as `explicit`, `repository`,
+`env`, `binding` or `preset`, and a plan's `project.keySource` says which one
+won.
+
 Do **not**:
 
 - copy JAM source into the project
@@ -352,6 +382,16 @@ problem, or a local setup problem?
 [OK]   JQL search / PROJECT access - reachable (sample PROJECT-101)
 [OK]   Issue detail endpoint - reachable (PROJECT-101)
 ```
+
+`jam doctor --json` adds a `diagnosis` block with one verdict per axis —
+`credentials`, `projectBinding`, `runtime`, `registration`, `liveToolset`,
+`jiraAuthentication`, `jiraProjectAccess` — so a failure is attributed rather
+than guessed at. `source: "mixed"` means the three fields resolved from more
+than one place (say, base URL and email from the OS store with the token
+exported for this shell); that is a supported setup and reports as a warning
+with a per-field `sources` map, never as a failure on its own. Whether Jira
+accepts the credentials is the `jiraAuthentication` axis, separately. No
+credential value appears in any output.
 
 `jam serve` runs local checks only before starting, so Jira's latency never
 delays your editor's startup; `jam doctor` and `jam setup` add the live
