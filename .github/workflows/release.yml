@@ -122,13 +122,44 @@ jobs:
             done
             [ -n "$ok" ] || { echo "::error::@jam-mcp/$p@$V never appeared on the registry within 15 minutes"; exit 1; }
           done
+          # The packument being served is not the same as npm being able to
+          # resolve it: the install path has its own cache and CDN, and on the
+          # v1.4.4 run this step passed while the smoke's install died with
+          # ETARGET on @jam-mcp/server. Ask the resolver too, for every package
+          # - an install pulls the dependencies, not just the entry point.
+          for p in launcher server bootstrap; do
+            ok=""
+            for i in $(seq 1 30); do
+              if [ "$(npm view --prefer-online "@jam-mcp/$p@$V" version 2>/dev/null)" = "$V" ]; then
+                ok=1
+                echo "npm resolves @jam-mcp/$p@$V after $(( (i - 1) * 10 ))s"
+                break
+              fi
+              sleep 10
+            done
+            [ -n "$ok" ] || { echo "::error::npm could not resolve @jam-mcp/$p@$V within 5 minutes of it being served"; exit 1; }
+          done
 
       - name: published smoke
         if: ${{ !inputs.dry_run }}
         run: |
           V="${{ inputs.version }}"
           PREFIX=$(mktemp -d)
-          npm install -g --prefer-online --prefix "$PREFIX" "@jam-mcp/launcher@$V"
+          # Bounded retry: the install resolves the launcher AND its exact
+          # server/bootstrap dependencies, so it can still meet a version that
+          # has not propagated to every edge yet. Six attempts over five
+          # minutes, then it is a real failure rather than a slow one.
+          installed=""
+          for i in $(seq 1 6); do
+            if npm install -g --prefer-online --prefix "$PREFIX" "@jam-mcp/launcher@$V"; then
+              installed=1
+              [ "$i" -gt 1 ] && echo "install succeeded on attempt $i"
+              break
+            fi
+            echo "install attempt $i failed; waiting for propagation"
+            sleep 50
+          done
+          [ -n "$installed" ] || { echo "::error::@jam-mcp/launcher@$V could not be installed after 6 attempts over ~5 minutes"; exit 1; }
           # `jam --help` writes usage to stderr - stdout belongs to the MCP
           # protocol. Capture both streams, then grep the file (a pipe dies on
           # grep's exit 1 under pipefail — seen on the v1.4.1 run).
