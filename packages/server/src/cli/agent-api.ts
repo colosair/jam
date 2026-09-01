@@ -108,7 +108,8 @@ export async function setupApplyCommand(options: AgentOptions = {}): Promise<num
   if (
     plan.code === "JAM_PROJECT_CONFIG_INVALID" ||
     plan.code === "JAM_MCP_CONFIG_UNREADABLE" ||
-    plan.code === "JAM_BINDINGS_UNREADABLE"
+    plan.code === "JAM_BINDINGS_UNREADABLE" ||
+    plan.code === "JAM_PROJECT_KEY_CONFLICT"
   ) {
     emitJson({ ...plan, changesApplied: false });
     return 1;
@@ -154,7 +155,8 @@ export async function setupAgentCommand(options: AgentOptions = {}): Promise<num
   if (
     plan.code === "JAM_PROJECT_CONFIG_INVALID" ||
     plan.code === "JAM_MCP_CONFIG_UNREADABLE" ||
-    plan.code === "JAM_BINDINGS_UNREADABLE"
+    plan.code === "JAM_BINDINGS_UNREADABLE" ||
+    plan.code === "JAM_PROJECT_KEY_CONFLICT"
   ) {
     emitJson({ ...plan, changesApplied: false });
     return 1;
@@ -205,9 +207,102 @@ export async function doctorJsonCommand(options: AgentOptions = {}): Promise<num
     ...(health.error ? { error: health.error } : {}),
     project: { root: state.project.root, ...(state.project.key ? { key: state.project.key } : {}) },
     axes,
+    diagnosis: diagnose(state, axes, health),
     checks: health.checks,
   });
   return passed ? 0 : 1;
+}
+
+/**
+ * One verdict per thing that can independently be wrong.
+ *
+ * A single `failed` makes an agent guess whether the credentials, the
+ * binding, the runtime, the registration or Jira itself is the problem - and
+ * a guess becomes a wrong repair. Each axis carries its own state and, when
+ * it is not OK, the check that said so.
+ */
+type DiagnosisAxis =
+  | "credentials"
+  | "projectBinding"
+  | "runtime"
+  | "registration"
+  | "liveToolset"
+  | "jiraAuthentication"
+  | "jiraProjectAccess";
+
+type AxisVerdict = { state: "OK" | "FAILED" | "WARNING" | "UNCHECKED"; detail?: string; code?: string };
+
+function diagnose(
+  state: SetupState,
+  axes: DoctorAxes,
+  health: GateResult,
+): Record<DiagnosisAxis, AxisVerdict> {
+  const check = (name: string): { ok: boolean; detail?: string } | undefined =>
+    health.checks.find((c) => c.name === name);
+  const fromCheck = (name: string, code: string): AxisVerdict => {
+    const found = check(name);
+    if (!found) return { state: "UNCHECKED" };
+    return found.ok
+      ? { state: "OK", ...(found.detail ? { detail: found.detail } : {}) }
+      : { state: "FAILED", code, ...(found.detail ? { detail: found.detail } : {}) };
+  };
+
+  // Credentials: this axis answers "are all three fields resolvable, and from
+  // where" - the snapshot knows that. Whether Jira accepts them is a different
+  // question with its own axis below, and conflating the two is what made a
+  // working "mixed" setup read as broken. "mixed" is never a failure here.
+  const credentialCheck = check("Credentials present");
+  const mixed = state.credentials.source === "mixed";
+  const credentials: AxisVerdict = !state.credentials.present
+    ? {
+        state: "FAILED",
+        code: "JAM_AUTH_REQUIRED",
+        ...(credentialCheck?.detail ? { detail: credentialCheck.detail } : {}),
+      }
+    : mixed
+      ? { state: "WARNING", detail: `fields come from more than one source: ${describeSources(state)}` }
+      : { state: "OK", detail: `source ${state.credentials.source}` };
+
+  return {
+    credentials,
+    projectBinding: state.project.key
+      ? { state: "OK", detail: `key ${state.project.key}` }
+      : { state: "FAILED", code: "JAM_PROJECT_SELECTION_REQUIRED", detail: "no project key for this workspace" },
+    runtime:
+      axes.package === "PACKAGE_READY"
+        ? { state: "OK", ...(axes.packageVersion ? { detail: axes.packageVersion } : {}) }
+        : { state: "FAILED", code: "JAM_RUNTIME_CONFIG_MISSING", ...(state.runtime.error ? { detail: state.runtime.error } : {}) },
+    registration:
+      axes.registration === "OK"
+        ? { state: "OK", ...(axes.registeredVersion ? { detail: axes.registeredVersion } : {}) }
+        : axes.registration === "UNREGISTERED"
+          ? { state: "UNCHECKED", detail: "no host has a jam entry for this user" }
+          : { state: "FAILED", code: axes.registration, ...(axes.detail ? { detail: axes.detail } : {}) },
+    liveToolset:
+      axes.live === "OK"
+        ? { state: "OK" }
+        : axes.live === "UNCHECKED"
+          ? { state: "UNCHECKED", ...(axes.detail ? { detail: axes.detail } : {}) }
+          : {
+              state: "FAILED",
+              code: axes.live,
+              ...(axes.missingTools ? { detail: `missing: ${axes.missingTools.join(", ")}` } : {}),
+            },
+    jiraAuthentication: fromCheck("Jira authentication", "JAM_JIRA_AUTHENTICATION_FAILED"),
+    jiraProjectAccess: fromCheck(
+      health.checks.find((c) => c.name.startsWith("JQL search"))?.name ?? "JQL search",
+      "JAM_JIRA_PROJECT_ACCESS_FAILED",
+    ),
+  };
+}
+
+/** Field-to-source names only. A credential value never appears here. */
+function describeSources(state: SetupState): string {
+  const sources = state.credentials.sources;
+  if (!sources) return "unknown";
+  return Object.entries(sources)
+    .map(([field, from]) => `${field}=${from}`)
+    .join(", ");
 }
 
 type DoctorAxes = {
@@ -279,6 +374,8 @@ export function authStatusCommand(options: AgentOptions = {}): number {
     status: credentials.present ? "configured" : "not_configured",
     ...(credentials.present ? {} : { code: "JAM_AUTH_REQUIRED" }),
     source: credentials.source,
+    // Which field came from where. Names only - a value never appears.
+    ...(credentials.sources ? { sources: credentials.sources } : {}),
     ...(credentials.email ? { email: credentials.email } : {}),
     ...(credentials.baseUrl ? { baseUrl: credentials.baseUrl } : {}),
   });
