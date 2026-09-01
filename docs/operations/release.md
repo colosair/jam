@@ -280,6 +280,29 @@ cannot be taken back — which is exactly why the publish stage refuses a versio
 that already exists on the registry, and why acceptance sits between publish
 and tag rather than after both.
 
+### Propagation, and the two paths it travels
+
+The registry serving a packument is not the same as npm being able to install
+it. They are different paths with different caches, and the gap is real: on
+the v1.4.4 run the registry verification passed and the published smoke's
+`npm install` then died with `ETARGET` on `@jam-mcp/server`, which had been
+published seconds earlier and was visible over HTTP.
+
+So the publish stage waits on both, and neither wait is unbounded:
+
+- **served** — the packument endpoint answers for all three packages, with
+  caching off (up to 15 minutes)
+- **resolvable** — `npm view --prefer-online` answers for all three, which is
+  the resolver the install will use (up to 5 minutes)
+- **installable** — the smoke's install itself retries up to six times over
+  about five minutes before calling it a failure
+
+A version that misses all three is a genuine problem, not a slow one. A
+publish that has already succeeded is never re-published to get past this:
+the packages are on the registry and immutable, so verify by hand and carry
+on to acceptance (see Failure recovery in docs/release/README.md's asc twin,
+and the same rule applies here).
+
 ## Recorded runs
 
 What a host did, on a stated version, against a stated command. Kept so the
