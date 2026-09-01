@@ -112,3 +112,73 @@ describe("doctor — three axes", () => {
     expect(output.axes.live).toBe("UNCHECKED");
   });
 });
+
+/**
+ * Per-axis diagnosis. The field complaint behind this: doctor answered
+ * `failed` and the agent had to guess whether the credentials, the binding,
+ * the runtime, the registration or Jira itself was the problem - and a guess
+ * becomes a wrong repair. Each axis now carries its own verdict.
+ */
+describe("doctor — per-axis diagnosis", () => {
+  let capture: { read: () => any };
+  beforeEach(() => {
+    capture = captureJson();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const mixedCredentials = {
+    load: () => {
+      throw new Error("not needed");
+    },
+    describe: () => ({
+      baseUrl: "https://example.atlassian.net",
+      email: "u@example.com",
+      hasToken: true,
+      source: "mixed" as const,
+      sources: {
+        JIRA_BASE_URL: "secret-store" as const,
+        JIRA_EMAIL: "secret-store" as const,
+        JIRA_API_TOKEN: "process" as const,
+      },
+    }),
+  };
+
+  it("names every axis, so a failure never has to be guessed at", async () => {
+    const { root, home } = fixture();
+    await doctorJsonCommand({ cwd: root, home, runHost: noEntry });
+    const output = capture.read();
+    for (const axis of [
+      "credentials",
+      "projectBinding",
+      "runtime",
+      "registration",
+      "liveToolset",
+      "jiraAuthentication",
+      "jiraProjectAccess",
+    ]) {
+      expect(output.diagnosis, `missing axis ${axis}`).toHaveProperty(axis);
+      expect(output.diagnosis[axis].state).toMatch(/^(OK|FAILED|WARNING|UNCHECKED)$/);
+    }
+  });
+
+  it("an unbound workspace is a projectBinding failure, not an unattributed one", async () => {
+    const { root, home } = fixture();
+    await doctorJsonCommand({ cwd: root, home, runHost: noEntry });
+    const output = capture.read();
+    expect(output.diagnosis.projectBinding.state).toBe("FAILED");
+    expect(output.diagnosis.projectBinding.code).toBe("JAM_PROJECT_SELECTION_REQUIRED");
+  });
+
+  it("mixed credentials are a warning that names the sources, never a failure on their own", async () => {
+    const { root, home } = fixture();
+    await doctorJsonCommand({ cwd: root, home, runHost: noEntry, credentials: mixedCredentials });
+    const output = capture.read();
+    expect(output.diagnosis.credentials.state).toBe("WARNING");
+    expect(output.diagnosis.credentials.detail).toContain("JIRA_API_TOKEN=process");
+    expect(output.diagnosis.credentials.detail).toContain("JIRA_BASE_URL=secret-store");
+    // The warning says where fields came from - never what they are.
+    expect(JSON.stringify(output)).not.toContain("SECRET");
+  });
+});

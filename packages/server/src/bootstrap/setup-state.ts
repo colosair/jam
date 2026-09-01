@@ -5,7 +5,7 @@ import {
 } from "@jam-mcp/launcher";
 import { CompositeCredentialProvider } from "../adapters/credentials/composite.js";
 import { loadConfig } from "../config/load-config.js";
-import type { CredentialPort, CredentialSource } from "../ports/credentials.port.js";
+import type { CredentialDescription, CredentialPort, CredentialSource } from "../ports/credentials.port.js";
 import { bareJamVersion, detectHosts, type HostRunner, type HostState } from "./host-mcp.js";
 import { inspectMcpConfig, isLegacyJamEntry, type McpInspection } from "./mcp-config-merger.js";
 import { inspectProjectBindings, type ProjectBinding } from "./project-bindings.js";
@@ -24,6 +24,8 @@ export type RuntimeState = {
 export type CredentialState = {
   present: boolean;
   source: CredentialSource;
+  /** Which source supplied each field. Names only - never a value. */
+  sources?: CredentialDescription["sources"];
   baseUrl?: string;
   email?: string;
 };
@@ -137,6 +139,7 @@ function detectCredentials(credentials: CredentialPort): CredentialState {
     source: described.source,
   };
   // Presence and origin only - the token value never enters this snapshot.
+  if (described.sources) state.sources = described.sources;
   if (described.baseUrl) state.baseUrl = described.baseUrl;
   if (described.email) state.email = described.email;
   return state;

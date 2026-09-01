@@ -16,6 +16,13 @@ export type CredentialDescription = {
   email?: string;
   hasToken: boolean;
   source: CredentialSource;
+  /**
+   * Which source supplied each field. `source` alone says "mixed" without
+   * saying mixed how, which reads as a fault when it is a normal state - a
+   * base URL and email in the OS store with the token exported for one shell
+   * is a supported setup. Names only: no value ever appears here.
+   */
+  sources?: Partial<Record<"JIRA_BASE_URL" | "JIRA_EMAIL" | "JIRA_API_TOKEN", Exclude<CredentialSource, "mixed" | "none">>>;
 };
 
 export interface CredentialPort {

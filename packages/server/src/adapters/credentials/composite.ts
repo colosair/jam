@@ -40,7 +40,7 @@ type NamedSource = { name: Exclude<CredentialSource, "mixed" | "none">; source: 
  */
 export class CompositeCredentialProvider implements CredentialPort {
   private readonly sources: NamedSource[];
-  private cached?: { values: RawCredentialValues; sourceByKey: Partial<Record<CredentialEnvKey, string>> };
+  private cached?: { values: RawCredentialValues; sourceByKey: Partial<Record<CredentialEnvKey, NamedSource["name"]>> };
 
   constructor(
     sources: NamedSource[] = [
@@ -56,7 +56,7 @@ export class CompositeCredentialProvider implements CredentialPort {
     if (this.cached) return this.cached;
 
     const values: RawCredentialValues = {};
-    const sourceByKey: Partial<Record<CredentialEnvKey, string>> = {};
+    const sourceByKey: Partial<Record<CredentialEnvKey, NamedSource["name"]>> = {};
 
     for (const { name, source } of this.sources) {
       const read = source.read();
@@ -101,6 +101,13 @@ export class CompositeCredentialProvider implements CredentialPort {
     const description: CredentialDescription = { hasToken: Boolean(values.JIRA_API_TOKEN), source };
     if (values.JIRA_BASE_URL) description.baseUrl = values.JIRA_BASE_URL;
     if (values.JIRA_EMAIL) description.email = values.JIRA_EMAIL;
+    // Per-field provenance, so "mixed" can be read rather than guessed at.
+    const sources: NonNullable<CredentialDescription["sources"]> = {};
+    for (const field of ["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"] as const) {
+      const from = sourceByKey[field];
+      if (from) sources[field] = from;
+    }
+    if (Object.keys(sources).length > 0) description.sources = sources;
     return description;
   }
 }
