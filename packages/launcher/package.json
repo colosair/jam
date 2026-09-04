@@ -1,6 +1,6 @@
 {
   "name": "@jam-mcp/launcher",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "JAM launcher - resolves which JAM runtime to run and dispatches to it",
   "keywords": [
     "jira",
@@ -55,7 +55,7 @@
   },
   "dependencies": {
     "yaml": "^2.9.0",
-    "@jam-mcp/server": "1.4.4"
+    "@jam-mcp/server": "1.4.5"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

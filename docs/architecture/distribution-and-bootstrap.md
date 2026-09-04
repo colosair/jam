@@ -103,7 +103,7 @@ Neither touches a project.
 ```json
 {
   "mcpServers": {
-    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.4.4", "serve"] }
+    "jam": { "command": "npx", "args": ["--yes", "@jam-mcp/launcher@1.4.5", "serve"] }
   }
 }
 ```
@@ -316,14 +316,14 @@ would silently change what a teammate's editor launches.
 
 ```bash
 # one shot: detect, plan, apply safe, verify
-npx --yes @jam-mcp/bootstrap@1.4.4 setup --agent
+npx --yes @jam-mcp/bootstrap@1.4.5 setup --agent
 # what would change, changing nothing
-npx --yes @jam-mcp/bootstrap@1.4.4 setup plan --json
+npx --yes @jam-mcp/bootstrap@1.4.5 setup plan --json
 # execute
-npx --yes @jam-mcp/bootstrap@1.4.4 setup apply --non-interactive --json
-npx --yes @jam-mcp/bootstrap@1.4.4 doctor --json
+npx --yes @jam-mcp/bootstrap@1.4.5 setup apply --non-interactive --json
+npx --yes @jam-mcp/bootstrap@1.4.5 doctor --json
 # presence and origin, never the value
-npx --yes @jam-mcp/bootstrap@1.4.4 auth status --json
+npx --yes @jam-mcp/bootstrap@1.4.5 auth status --json
 ```
 
 Bootstrap, not `jam` — an agent's first command runs on a machine with no

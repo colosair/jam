@@ -1,6 +1,6 @@
 # ADR: Jira reference integrity
 
-**Status:** accepted
+**Status:** accepted, v1.4.5
 **Relates to:** [ADR: the Jira write plane](adr-jira-write-plane.md), whose plan/apply
 shape this pins to an identity rather than to a key.
 
