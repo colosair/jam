@@ -8,7 +8,7 @@ const DESCRIPTION = `Get the complete record for one or more Jira issues, includ
 
 Use for final judgements: was this agreed, is the contract settled, was it approved, can it be closed, what did the other team actually answer, what does this issue mean right now.
 
-Returns everything jira_context returns plus description and every comment (normalized to plain text). This is the most expensive tool - prefer jira_search for listing and jira_context for readiness, and reach for this one when the answer must not be wrong.
+Returns everything jira_context returns - issueId and statusCategory included - plus description and every comment (normalized to plain text). This is the most expensive tool - prefer jira_search for listing and jira_context for readiness, and reach for this one when the answer must not be wrong.
 
 Ask for as few keys as possible: with several issues at once the output budget may drop the oldest comments. Always check meta.commentsComplete and meta.complete - if either is false, the thread you are reading is partial and a "yes, it is agreed" answer is not supported.
 

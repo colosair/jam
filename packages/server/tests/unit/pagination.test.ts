@@ -73,8 +73,12 @@ describe("search pagination", () => {
 
     expect(serialized).not.toContain("long description");
     expect(serialized).not.toContain("hi");
+    // The whole SEARCH shape, in order. Additions to it are deliberate, and
+    // this is where they have to be declared - `issueId` and `statusCategory`
+    // arrived with Jira identity, cost no extra field and no extra request.
     expect(Object.keys(result.issues[0] ?? {})).toEqual([
       "key",
+      "issueId",
       "summary",
       "status",
       "updated",

@@ -69,6 +69,20 @@ describe("applyWritePlan(issue.create)", () => {
     expect(receipt.after).toMatchObject({ issueType: "Task", summary: "Write the thing" });
   });
 
+  it("reports the canonical id of the issue Jira made, read back from Jira", async () => {
+    const planId = await plan(ctx);
+
+    const receipt = await applyWritePlan(ctx.jam, { planId });
+
+    // The key is how a person will find it; the id is what says the thing they
+    // find is the thing that was created. Both come from Jira - the key from
+    // the create response, the id confirmed by the verification read that was
+    // already happening. Neither is derived from the other, and no extra call
+    // was made to get it.
+    expect(receipt.issueId).toBe(`id-${CREATED_KEY}`);
+    expect(receipt.issue).toBe(CREATED_KEY);
+  });
+
   it("re-reads the schema before sending anything", async () => {
     const planId = await plan(ctx);
     const beforeApply = ctx.metadata.issueTypeCalls.length;

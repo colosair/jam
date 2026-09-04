@@ -203,6 +203,31 @@ describe("tool contract", () => {
     ]);
   });
 
+  it("carries Jira identity on every read result, and adds no input to get it", async () => {
+    // Identity is additive output: the three read tools now name the issue by
+    // Jira's immutable id as well as by its key, and nothing about how they
+    // are called changed. An agent that never looks at `issueId` sees exactly
+    // the contract it saw before.
+    const { tools } = await client.listTools();
+    const byName = Object.fromEntries(tools.map((t) => [t.name, t.inputSchema]));
+    expect(Object.keys(byName["jira_context"]!.properties ?? {})).toEqual(["issueKeys"]);
+    expect(Object.keys(byName["jira_full"]!.properties ?? {})).toEqual(["issueKeys"]);
+
+    const search = payload(
+      await client.callTool({ name: "jira_search", arguments: { jql: "project = PROJECT" } }),
+    );
+    expect(search.issues[0].key).toBe("PROJECT-101");
+    expect(search.issues[0].issueId).toBe("id-PROJECT-101");
+
+    for (const tool of ["jira_context", "jira_full"]) {
+      const result = payload(
+        await client.callTool({ name: tool, arguments: { issueKeys: ["PROJECT-97"] } }),
+      );
+      expect(result.issues[0].key).toBe("PROJECT-97");
+      expect(result.issues[0].issueId).toBe("id-PROJECT-97");
+    }
+  });
+
   it("jira_search returns lite issues plus completeness metadata", async () => {
     const result = payload(
       await client.callTool({ name: "jira_search", arguments: { jql: "project = PROJECT" } }),

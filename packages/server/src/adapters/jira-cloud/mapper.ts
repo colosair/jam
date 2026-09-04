@@ -10,9 +10,22 @@ import { adfToText } from "./adf-to-text.js";
 
 type RawUser = { displayName?: string; emailAddress?: string; accountId?: string };
 type RawNamed = { name?: string };
+/**
+ * Jira's status object. `name` is the workflow's own, localized label;
+ * `statusCategory.key` is the stable value Jira publishes for machines.
+ */
+type RawStatus = RawNamed & { statusCategory?: { key?: string } };
+/**
+ * A nested issue reference, as Jira embeds it in parent, subtasks and links.
+ *
+ * Jira sends `id` here as well as on the top-level issue, which is what makes
+ * identity on a reference free: it is already in the payload, so keeping it
+ * costs no request. When a shape does not carry it, it stays absent.
+ */
 type RawIssueRef = {
   key?: string;
-  fields?: { summary?: string; status?: RawNamed };
+  id?: string;
+  fields?: { summary?: string; status?: RawStatus };
 };
 type RawLink = {
   type?: { name?: string; inward?: string; outward?: string };
@@ -65,6 +78,15 @@ export function mapIssueWithMeta(raw: RawIssue, config: ProjectConfig): MappedIs
     customFields: mapCustomFields(f, config),
     comments: [],
   };
+
+  // Jira returns `id` as a property of the issue resource, not as a field, so
+  // it arrives whatever the field list says and costs nothing to keep. Set
+  // only when Jira sent one: an empty string would read as an identity that
+  // was looked at and found blank.
+  if (raw.id) issue.issueId = raw.id;
+
+  const statusCategory = category(f["status"]);
+  if (statusCategory) issue.statusCategory = statusCategory;
 
   const assignee = user(f["assignee"]);
   if (assignee) issue.assignee = assignee;
@@ -171,10 +193,13 @@ export function normalizeFieldValue(value: unknown): unknown {
 
 function issueRef(raw: RawIssueRef): IssueRef {
   const ref: IssueRef = { key: raw.key ?? "" };
+  if (raw.id) ref.issueId = raw.id;
   const summary = raw.fields?.summary;
   if (summary) ref.summary = summary;
   const status = raw.fields?.status?.name;
   if (status) ref.status = status;
+  const statusCategory = raw.fields?.status?.statusCategory?.key;
+  if (statusCategory) ref.statusCategory = statusCategory;
   return ref;
 }
 
@@ -184,6 +209,18 @@ function str(v: unknown): string | undefined {
 
 function named(v: unknown): string | undefined {
   return (v as RawNamed | undefined)?.name;
+}
+
+/**
+ * Jira's status category key, or nothing.
+ *
+ * Nothing, specifically, rather than a guess: the alternative is matching
+ * `status.name` against a list of words that mean "done", which is wrong in
+ * every language a project is not configured in and wrong in English the
+ * moment someone renames a status.
+ */
+function category(v: unknown): string | undefined {
+  return (v as RawStatus | undefined)?.statusCategory?.key;
 }
 
 function user(v: unknown): string | undefined {

@@ -94,6 +94,72 @@ async function failure(fn: () => Promise<unknown>): Promise<JamError> {
   throw new Error("expected a JamError, but the call succeeded");
 }
 
+describe("a write is pinned to an issue, not to a key", () => {
+  it("records the canonical id at plan time and reports it in both receipts", async () => {
+    const { jira, deps } = setup({ issueId: "10001" });
+    const { plan, receipt: planned } = await planWrite(deps, {
+      key: "PROJECT-1",
+      operation: "field.update",
+      input: { labels: ["backend", "mvp1"] },
+    });
+
+    expect(planned.issue).toBe("PROJECT-1");
+    expect(planned.issueId).toBe("10001");
+
+    jira.set({ labels: ["backend", "mvp1"] });
+    const applied = await applyWritePlan(deps, { planId: plan.planId });
+
+    expect(applied).toMatchObject({ issue: "PROJECT-1", issueId: "10001", verified: true });
+  });
+
+  it("refuses when the key has come to name a different issue", async () => {
+    const { jira, jiraWrite, deps } = setup({ issueId: "10001" });
+    const { plan } = await planWrite(deps, {
+      key: "PROJECT-1",
+      operation: "comment.add",
+      input: { text: "Contract updated." },
+    });
+
+    // The key still resolves and the revision is untouched - and it is not the
+    // issue that was planned. A key is a locator Jira can move; only the id
+    // says whether the target is the same thing.
+    jira.set({ issueId: "20002" });
+
+    const err = await failure(() => applyWritePlan(deps, { planId: plan.planId }));
+
+    expect(err.code).toBe("JAM_WRITE_CONFLICT");
+    expect(err.details).toMatchObject({ plannedIssueId: "10001", observedIssueId: "20002" });
+    // Refused before the mutation, not after it.
+    expect(jiraWrite.mutations).toBe(0);
+  });
+
+  it("will not build a plan on an issue Jira named no id for", async () => {
+    const { deps } = setup({ issueId: undefined });
+
+    const err = await failure(() =>
+      planWrite(deps, { key: "PROJECT-1", operation: "comment.add", input: { text: "hi" } }),
+    );
+
+    expect(err.code).toBe("PARTIAL_RESULT");
+    expect(err.message).toMatch(/canonical issue id/);
+  });
+
+  it("costs no extra Jira read - identity travels on the reads a write already makes", async () => {
+    const { jira, deps } = setup({ issueId: "10001" });
+    const { plan } = await planWrite(deps, {
+      key: "PROJECT-1",
+      operation: "field.update",
+      input: { summary: "Wire the auth endpoint properly" },
+    });
+    jira.set({ summary: "Wire the auth endpoint properly" });
+    await applyWritePlan(deps, { planId: plan.planId });
+
+    // Plan, apply preflight, post-write verify. The same three reads as before
+    // identity existed - each now also answers which issue it read.
+    expect(jira.reads.length).toBe(3);
+  });
+});
+
 describe("a write that lands", () => {
   it("adds the comment and confirms it by reading the thread back", async () => {
     const { jira, jiraWrite, deps } = setup();

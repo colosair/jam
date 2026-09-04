@@ -197,6 +197,16 @@ type WritePlanCommon = {
 export type ExistingIssueWritePlan = WritePlanCommon & {
   kind: "existing-issue";
   issueKey: string;
+  /**
+   * The canonical Jira id of the issue this plan was made against.
+   *
+   * `issueKey` says where to look; this says what was found there. They are
+   * not the same guarantee: a key is a locator Jira can move between issues,
+   * so re-reading the key at apply time can return a different issue than the
+   * one the plan described. Comparing this is what turns "the key still
+   * resolves" into "it still resolves to the issue that was planned".
+   */
+  issueId: string;
   operation: ExistingIssueOperation;
   baseUpdated: string;
   /**
@@ -259,6 +269,11 @@ export type WritePlanReceipt = {
    * yet - a placeholder key here would be a claim JAM cannot make.
    */
   issue?: string;
+  /**
+   * The canonical Jira id of that issue. Absent for `issue.create` for the
+   * same reason `issue` is: Jira mints both, and it has not been asked yet.
+   */
+  issueId?: string;
   /** The project a new issue would be created in. Present for `issue.create`. */
   project?: string;
   /** How the result of applying this plan will be confirmed. */
@@ -274,6 +289,14 @@ export type WriteApplyReceipt = {
   status: "applied";
   /** For `issue.create`, the key Jira minted - known only after applying. */
   issue: string;
+  /**
+   * The canonical Jira id of the issue that was written, read back from Jira.
+   *
+   * What to record if this write is going to be referred to later. The key is
+   * how a person and an integration will find the issue; this is what says the
+   * thing they find is the thing that was changed.
+   */
+  issueId: string;
   operation: WriteOperation;
   before: Record<string, unknown>;
   after: Record<string, unknown>;

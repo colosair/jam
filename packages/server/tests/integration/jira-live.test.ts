@@ -32,13 +32,44 @@ describe.skipIf(!enabled)("live Jira", () => {
     const firstKey = search.issues[0]?.key;
     if (!firstKey) return;
 
+    // Identity, against a real Jira. `issueId` is what makes a reference
+    // survive a key being moved, so "Jira sends it and JAM keeps it" is worth
+    // asserting somewhere no fixture can be wrong about.
+    const firstId = search.issues[0]?.issueId;
+    expect(firstId, "Jira returns an id on every issue").toBeTruthy();
+    // Jira ids are numeric strings. A key would fail this, which is the point:
+    // the two must not be confusable.
+    expect(firstId).toMatch(/^\d+$/);
+
     const context = await getIssueContext(deps, { issueKeys: [firstKey] });
     expect(context.meta.level).toBe("context");
     expect(context.issues[0]?.key).toBe(firstKey);
     expect(context.issues[0]).toHaveProperty("links");
+    // The same issue read twice through different endpoints is the same issue.
+    expect(context.issues[0]?.issueId).toBe(firstId);
+
+    // Status category comes from Jira's own vocabulary, never from the status
+    // name - which is why this asserts the value is one of Jira's and not that
+    // it corresponds to anything the name says.
+    const category = context.issues[0]?.statusCategory;
+    if (category !== undefined) {
+      expect(["new", "indeterminate", "done", "undefined"]).toContain(category);
+    }
+
+    // Nested references carry identity wherever Jira supplies it, and JAM
+    // spends no request to fill in the ones it does not.
+    for (const ref of [
+      ...(context.issues[0]?.parent ? [context.issues[0].parent] : []),
+      ...(context.issues[0]?.subtasks ?? []),
+      ...(context.issues[0]?.links ?? []).map((l) => l.issue),
+    ]) {
+      expect(ref.key).toBeTruthy();
+      if (ref.issueId !== undefined) expect(ref.issueId).toMatch(/^\d+$/);
+    }
 
     const full = await getFullIssueContext(deps, { issueKeys: [firstKey] });
     expect(full.meta.level).toBe("full");
+    expect(full.issues[0]?.issueId).toBe(firstId);
     expect(full.meta.commentsComplete).toBeDefined();
     expect(full.issues[0]).toHaveProperty("comments");
   }, 60_000);

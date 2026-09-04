@@ -12,7 +12,11 @@ Returns everything jira_search returns plus issue type, parent, subtasks, issue 
 
 This is the Jira-recorded evidence relevant to readiness, blockers, dependencies and priority - not a readiness verdict. blocksThisIssue reports how Jira words a link; an empty links array means Jira holds no visible link for you, not that nothing blocks the work. Repository and external sources are not evaluated.
 
-Pass every key you care about in one call; they are fetched in a single batched round trip. Check meta.complete and meta.missingKeys before drawing conclusions.`;
+Every issue carries issueId, Jira's immutable id, alongside key. The key is the current human- and integration-facing locator and Jira can move it to another issue; issueId is the identity. Record issueId when a reference has to survive. statusCategory is Jira's own machine-readable category for the status - read it instead of matching status text, which is workflow-defined and localized. Parent, subtasks and links carry issueId too, wherever Jira supplies one.
+
+Pass every key you care about in one call; they are fetched in a single batched round trip. Check meta.complete and meta.missingKeys before drawing conclusions.
+
+This is also how a Jira issue key is checked. Asking for an exact key and getting an issue back is a positive resolution: that key names that issue, right now. A key listed in meta.missingKeys resolved to nothing JAM can see - it may not exist, or it may not be visible to this account, and those are indistinguishable from here. Either way it is unusable, and it is NOT evidence that the number is free, unused or reservable. Never synthesize, increment, predict or reserve a Jira issue key; keys are minted by Jira.`;
 
 export function registerJiraContext(server: McpServer, deps: JamDeps): void {
   server.registerTool(

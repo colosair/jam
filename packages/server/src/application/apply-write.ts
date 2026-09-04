@@ -4,7 +4,7 @@ import { JamError, toJamError } from "../domain/errors.js";
 import type { ExistingIssueWritePlan, WriteApplyReceipt } from "../domain/write.js";
 import { readModeAfterWrite } from "../policy/consistency-policy.js";
 import { assertAssignable } from "../policy/assignee-policy.js";
-import { assertUnchanged } from "../policy/write-policy.js";
+import { assertSameIssue, assertUnchanged } from "../policy/write-policy.js";
 import { applyCreateIssue } from "./apply-create-issue.js";
 import { readIssue } from "./plan-write.js";
 
@@ -47,6 +47,10 @@ export async function applyWritePlan(
   if (plan.kind === "create-issue") return applyCreateIssue(deps, plan);
 
   const current = await readIssue(deps, plan.issueKey);
+  // Identity before revision: if the key now names a different issue, its
+  // `updated` timestamp is a fact about something nobody planned to change,
+  // and comparing it would be answering the wrong question.
+  assertSameIssue(plan.issueKey, plan.issueId, current.issueId);
   assertUnchanged(plan.issueKey, plan.baseUpdated, current.issue.updated);
 
   // Whatever the plan depends on that the revision check cannot see, checked
@@ -64,6 +68,7 @@ export async function applyWritePlan(
   return {
     status: "applied",
     issue: plan.issueKey,
+    issueId: plan.issueId,
     operation: plan.operation,
     before: plan.before,
     after,
@@ -155,6 +160,11 @@ function isAmbiguous(err: JamError): boolean {
 async function verify(deps: JamDeps, plan: ExistingIssueWritePlan): Promise<Record<string, unknown>> {
   const snapshot = await readIssue(deps, plan.issueKey);
   const issue = snapshot.issue;
+
+  // The same identity question again, for the read that produces the evidence.
+  // Confirming the intended value on an issue the key has since come to name
+  // would be reporting somebody else's state as proof of our write.
+  assertSameIssue(plan.issueKey, plan.issueId, snapshot.issueId);
 
   if (plan.mutation.kind === "assignee") {
     // On the accountId, never on the display name. Two people can share a

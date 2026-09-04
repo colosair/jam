@@ -271,7 +271,10 @@ export class FakeJiraWrite implements JiraWritePort {
     if (!this.createdKey) {
       throw new Error("Jira accepted a create but returned no key");
     }
-    return { id: "10500", key: this.createdKey };
+    // The id follows the same convention `issue()` uses, so the create
+    // response and the verification read agree about which issue this is -
+    // as Jira's do.
+    return { id: `id-${this.createdKey}`, key: this.createdKey };
   }
 
   async updateIssue(key: string, fields: Record<string, unknown>): Promise<void> {
@@ -458,6 +461,11 @@ export class FakeAssignees implements JiraAssigneeResolutionPort {
 
 export function issue(partial: Partial<FullIssueContext> & { key: string }): FullIssueContext {
   return {
+    // Jira sends an id on every issue it returns, so a fixture without one is
+    // not a realistic issue - and the write plane refuses it, which would make
+    // every write test a test about missing identity. Tests that are about
+    // that pass `issueId: undefined` deliberately.
+    issueId: `id-${partial.key}`,
     summary: `Summary for ${partial.key}`,
     status: "Open",
     updated: "2026-08-25T12:00:00.000+0900",
