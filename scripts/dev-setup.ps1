@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   Not the installation path. Someone who wants to use JAM runs
-  `npx --yes @jam-mcp/bootstrap@1.4.4 init` and never clones this repository.
+  `npx --yes @jam-mcp/bootstrap@1.4.5 init` and never clones this repository.
 
   This is for working on JAM itself: it checks the Node version, installs
   dependencies, builds, then runs doctor so the result is a verdict rather than
