@@ -210,6 +210,43 @@ Jira = Canonical Source
 Cache = Read Optimization
 ```
 
+## 4.6 key는 위치, issueId는 정체성
+
+Jira issue key 는 Jira 가 발급하는 **locator** 다. 프로젝트 안에서 재배치될 수
+있고, 그래서 몇 달 전에 기록된 key 는 대상이 아니라 문자열이다. 반면
+`issueId` 는 Jira 가 한 번 발급하고 재사용하지 않는 **identity** 다.
+
+```text
+key     = 지금 이 이슈를 가리키는 사람·연동용 참조
+issueId = 그 이슈 자체
+```
+
+JAM 은 두 가지를 지킨다.
+
+1. **key 를 추론하지 않는다.** 다음 번호·빈 번호·비어 보이는 번호를 만들어
+   쓰지 않는다. key 가 필요하면 `issue.create` 로 Jira 가 발급하게 하고,
+   기존 key 를 재사용하려면 그 key 를 live Jira 에 조회해서 **positive
+   resolution** 을 먼저 얻는다. 조회되지 않는 key 는 "쓸 수 없는 key" 이지
+   "비어 있는 번호" 가 아니다 — 그 구분이 무너지면 나중에 발급된 남의 이슈에
+   과거 commit·MR 이 소급 연결된다.
+2. **identity 를 버리지 않는다.** Jira 는 모든 issue payload 와 그 안의 nested
+   reference(parent·subtasks·issuelinks)에 `id` 를 함께 보낸다. 이미 받은 값이므로
+   보존 비용은 **Jira round trip 0** 이다. nested reference 의 identity 를
+   채우려고 추가 조회(N+1)를 만들지 않으며, Jira 가 주지 않은 자리는 비워 둔다
+   (빈 문자열로 채우지 않는다).
+
+같은 이유로 `status` 옆에 Jira 의 `statusCategory` 를 함께 실어 보낸다. `status`
+는 workflow 가 정하는 지역화된 이름이라 `"완료"`·`"Shipped"` 같은 문자열
+매칭으로 완료 여부를 판정하면 틀린다. 판정에 쓸 값은 Jira 가 기계용으로
+발행하는 category key 이고, JAM 은 그것을 **그대로 전달**할 뿐 자체 판정으로
+바꾸지 않는다.
+
+Write plane 은 이 identity 를 계약으로 쓴다 — plan 시점의 `issueId` 를 기록하고,
+apply 직전과 사후 검증에서 같은 key 가 여전히 같은 이슈를 가리키는지 확인한다.
+어긋나면 `JAM_WRITE_CONFLICT` 로 멈춘다.
+
+자세한 근거는 [ADR: Jira reference integrity](../decisions/adr-jira-reference-integrity.md).
+
 ---
 
 # 5. 외부 Tool 계약
@@ -255,14 +292,20 @@ type JiraSearchInput = {
 
 ```text
 key
+issueId
 summary
 status
+statusCategory
+updated
 assignee
 priority
-updated
 labels
 components
 ```
+
+`issueId` 와 `statusCategory` 는 Jira 가 이미 보낸 payload 에서 꺼내므로 추가
+필드 요청도, 추가 round trip 도 없다 (§4.6). Jira 가 보내지 않은 경우에는
+필드 자체가 없다.
 
 `description`, `comments`, `attachments`, `changelog`는 반환하지 않는다.
 
@@ -273,8 +316,10 @@ components
   "issues": [
     {
       "key": "PROJECT-101",
+      "issueId": "10101",
       "summary": "Example issue",
       "status": "Open",
+      "statusCategory": "new",
       "assignee": "CURRENT_USER",
       "priority": "High",
       "updated": "2026-08-25T12:00:00+09:00",

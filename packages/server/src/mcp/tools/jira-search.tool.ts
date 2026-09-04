@@ -8,9 +8,11 @@ const DESCRIPTION = `Find Jira issues by JQL and get a lightweight list back.
 
 Use for: discovery, listing, "what is open", "what is assigned to me", recent changes, picking candidate issues.
 
-Returns key, summary, status, assignee, priority, updated, labels and components only. It deliberately does NOT return description, comments, attachments or links - that keeps listing cheap.
+Returns key, issueId, summary, status, statusCategory, assignee, priority, updated, labels and components only. It deliberately does NOT return description, comments, attachments or links - that keeps listing cheap.
 
 Because of that, a jira_search result is NOT complete issue context. Never conclude from it that something is agreed, approved, unblocked, or done. Follow up with jira_context (readiness, blockers, dependencies, priority) or jira_full (agreement, contract, approval, closure).
+
+Every issue carries issueId, Jira's immutable id, alongside key. The key is the current human- and integration-facing locator and Jira can move it to another issue; issueId is the identity. Record issueId when a reference has to survive. statusCategory is Jira's own machine-readable category for the status - read it instead of matching status text, which is workflow-defined and localized.
 
 Repository and external sources are not evaluated.
 

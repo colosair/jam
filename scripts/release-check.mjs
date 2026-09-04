@@ -205,22 +205,50 @@ for (const path of AGENT_DOCS) {
 //
 // This pins the mirror, and nothing else. Whether either file agrees with the
 // code is a different question and not one this check answers.
-const MIRROR_HEADING = "## Installing JAM into another project";
-const mirrored = (path) => {
+const MIRRORED_SECTIONS = [
+  ["## Installing JAM into another project", "the agent install rules live there"],
+  ["## Jira issue keys", "the Jira reference-safety rules live there"],
+];
+const section = (path, heading, why) => {
   const text = read(path);
-  const start = text.indexOf(MIRROR_HEADING);
+  const start = text.indexOf(heading);
   if (start < 0) {
-    fail(path, `no "${MIRROR_HEADING}" section - the agent install rules live there`);
+    fail(path, `no "${heading}" section - ${why}`);
     return undefined;
   }
-  const rest = text.slice(start + MIRROR_HEADING.length);
+  const rest = text.slice(start + heading.length);
   const end = rest.search(/\n## /);
   return end < 0 ? rest : rest.slice(0, end);
 };
-const agentsBlock = mirrored("AGENTS.md");
-const claudeBlock = mirrored("CLAUDE.md");
-if (agentsBlock !== undefined && claudeBlock !== undefined && agentsBlock !== claudeBlock) {
-  fail("AGENTS.md", `"${MIRROR_HEADING}" no longer matches CLAUDE.md word for word`);
+
+for (const [heading, why] of MIRRORED_SECTIONS) {
+  const agentsBlock = section("AGENTS.md", heading, why);
+  const claudeBlock = section("CLAUDE.md", heading, why);
+  if (agentsBlock !== undefined && claudeBlock !== undefined && agentsBlock !== claudeBlock) {
+    fail("AGENTS.md", `"${heading}" no longer matches CLAUDE.md word for word`);
+  }
+}
+
+// 9a. The rule an agent has to be holding before it writes a Jira key down.
+//
+// A key that was predicted rather than resolved is the mistake that stays
+// wrong after the fact: the number gets minted later, for someone else's work,
+// and a Git/Jira integration retroactively attaches every commit and MR that
+// carried the string to an issue nobody meant. Prose drifts, so the three
+// load-bearing claims are pinned rather than the whole section - matched on
+// collapsed whitespace, so rewrapping a paragraph is not a failure.
+const KEY_SAFETY_RULES = [
+  "never synthesize, increment, predict, reserve, or infer the availability of a jira issue key",
+  "positively resolve that exact key against live jira",
+  "it is not evidence that the number is free",
+];
+for (const path of ["AGENTS.md", "CLAUDE.md"]) {
+  const flat = read(path).replace(/\s+/g, " ").replace(/[*`]/g, "").toLowerCase();
+  for (const rule of KEY_SAFETY_RULES) {
+    if (!flat.includes(rule)) {
+      fail(path, `the Jira key-safety rule has drifted - no longer states: "${rule}"`);
+    }
+  }
 }
 
 // 7. The write surface named identically everywhere agents read.

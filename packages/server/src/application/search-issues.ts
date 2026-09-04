@@ -103,10 +103,19 @@ export async function searchIssues(
 
 /** Project down to lite fields so heavy data cannot leak through this path. */
 export function toSummary(issue: FullIssueContext): IssueSummary {
+  // Identity and status semantics ride along at every level, next to the
+  // fields they qualify. Both are already in the payload this projection is
+  // narrowing, so carrying them costs nothing - and dropping them would make
+  // the cheapest read the one an agent cannot safely act on: a key with no
+  // identity behind it, and a status name whose meaning it would have to
+  // guess. Spread rather than assigned afterwards so the JSON an agent reads
+  // puts each beside its subject.
   const summary: IssueSummary = {
     key: issue.key,
+    ...(issue.issueId ? { issueId: issue.issueId } : {}),
     summary: issue.summary,
     status: issue.status,
+    ...(issue.statusCategory ? { statusCategory: issue.statusCategory } : {}),
     updated: issue.updated,
     labels: issue.labels,
     components: issue.components,

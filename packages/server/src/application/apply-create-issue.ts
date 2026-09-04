@@ -36,13 +36,14 @@ export async function applyCreateIssue(
 
   const created = await create(deps, plan);
 
-  const after = await verify(deps, plan, created.key);
+  const { observed: after, issueId } = await verify(deps, plan, created);
 
   deps.writePlans.consume(plan.planId);
 
   return {
     status: "applied",
     issue: created.key,
+    issueId,
     operation: plan.operation,
     before: plan.before,
     after,
@@ -96,7 +97,7 @@ function intendedInput(plan: CreateIssueWritePlan): CreateIssueInput {
  * holding. So an ambiguous failure becomes JAM_WRITE_UNCERTAIN and says what
  * to do about it: look in the project, do not send it again.
  */
-async function create(deps: JamDeps, plan: CreateIssueWritePlan): Promise<{ key: string }> {
+async function create(deps: JamDeps, plan: CreateIssueWritePlan): Promise<{ id: string; key: string }> {
   if (plan.mutation.kind !== "create") {
     throw new JamError("CONFIG_INVALID", "A create-issue plan must carry a create mutation.");
   }
@@ -146,8 +147,9 @@ function isAmbiguous(err: JamError): boolean {
 async function verify(
   deps: JamDeps,
   plan: CreateIssueWritePlan,
-  issueKey: string,
-): Promise<Record<string, unknown>> {
+  created: { id: string; key: string },
+): Promise<{ observed: Record<string, unknown>; issueId: string }> {
+  const issueKey = created.key;
   // Where the issue landed is part of what was intended. The workspace binding
   // is the whole of JAM's write scope, so a key from another project coming
   // back from a create is the one outcome that must never be reported as the
@@ -162,7 +164,21 @@ async function verify(
     );
   }
 
-  const { issue } = await readIssue(deps, issueKey);
+  const { issue, issueId } = await readIssue(deps, issueKey);
+
+  // Jira named both the id and the key when it accepted the create; the
+  // read-back names them again. They have to agree - a key that already
+  // resolves to a different issue than the one just created is the one case
+  // where reporting the created key would point whoever reads the receipt at
+  // somebody else's issue.
+  if (issueId !== created.id) {
+    throw verificationFailed(
+      plan,
+      issueKey,
+      { issueId: created.id },
+      { issueId },
+    );
+  }
 
   const observed: Record<string, unknown> = {};
   for (const field of Object.keys(plan.intendedAfter)) {
@@ -175,7 +191,7 @@ async function verify(
     }
   }
 
-  return observed;
+  return { observed, issueId };
 }
 
 /**

@@ -77,6 +77,29 @@ export function assertWriteScope(issueKey: string, configuredProject: string): s
   return project;
 }
 
+/**
+ * The key still names the issue the plan was made against.
+ *
+ * A revision check answers "has this issue changed"; this answers the question
+ * underneath it - "is this the same issue at all". Jira keys are locators, not
+ * identities: one can be moved to another issue, and an integration holding
+ * the string would then be pointed somewhere nobody chose. Re-reading the key
+ * and finding a different canonical id means the plan describes an issue this
+ * key no longer names, and the answer is a new plan, not this write.
+ *
+ * JAM_WRITE_CONFLICT rather than a code of its own: the situation is the one
+ * an agent already knows how to handle - the ground moved, plan again against
+ * the current state - and a second code for it would only fragment that.
+ */
+export function assertSameIssue(issueKey: string, planned: string, observed: string): void {
+  if (planned === observed) return;
+  throw new JamError(
+    "JAM_WRITE_CONFLICT",
+    `${issueKey} no longer names the issue this plan was made against (planned ${planned}, now ${observed}). Plan again against the issue the key names now.`,
+    { issueKey, plannedIssueId: planned, observedIssueId: observed },
+  );
+}
+
 export function assertOperationAllowed(operation: string): WriteOperation {
   if (!isWriteOperation(operation)) {
     throw new JamError(

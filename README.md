@@ -20,11 +20,11 @@ still get full context, and every teammate gets the same policy.
 
 | Tool | Use it for | Returns |
 |---|---|---|
-| `jira_search` | listing, discovery, "what's open", picking candidates | key, summary, status, assignee, priority, updated, labels, components |
+| `jira_search` | listing, discovery, "what's open", picking candidates | key, `issueId`, summary, status, `statusCategory`, assignee, priority, updated, labels, components |
 | `jira_context` | readiness, blockers, dependencies, priority | the above + issue type, parent, subtasks, links (with `blocksThisIssue`), whitelisted custom fields |
 | `jira_full` | agreement, contract, approval, closure | the above + description and the full comment thread |
 
-Three rules make this work:
+Four rules make this work:
 
 1. **A `jira_search` result is never complete issue context.** Don't conclude
    agreement, approval, or done-ness from it.
@@ -36,10 +36,24 @@ Three rules make this work:
    same block: `evidenceScope` and `limitations` name the repository and every
    external source. Jira evidence is what JAM answers with; execution reality
    is somebody else's question.
+4. **A key is a locator; `issueId` is the identity.** Jira mints keys and can
+   move one to another issue, so a key recorded months ago is a string, not a
+   target. Every issue JAM returns carries `issueId` beside `key` at no extra
+   cost, and `statusCategory` beside `status` so nothing has to guess what a
+   workflow's localized status name means. An agent never invents a key: see
+   [AGENTS.md](AGENTS.md#jira-issue-keys).
 
 ```json
 {
-  "issues": [{ "key": "PROJECT-101", "summary": "Example issue", "status": "To Do" }],
+  "issues": [
+    {
+      "key": "PROJECT-101",
+      "issueId": "10101",
+      "summary": "Example issue",
+      "status": "To Do",
+      "statusCategory": "new"
+    }
+  ],
   "meta": {
     "level": "search",
     "complete": true,
@@ -496,6 +510,7 @@ and for the five changes it can make safely.
 | [JAM design of record](docs/architecture/jira-agent-mcp-design.md) | The three-tool contract and read policy |
 | [ADR: Jira read optimization](docs/decisions/adr-jam-jira-read-optimization.md) | Why reads are mediated at all |
 | [ADR: the Jira write plane](docs/decisions/adr-jira-write-plane.md) | Plan/apply, conflict detection, verification, and where plans live |
+| [ADR: Jira reference integrity](docs/decisions/adr-jira-reference-integrity.md) | Why a key is never predicted, and why `issueId` travels with it |
 | [Benchmark: jira-read-v1](docs/benchmarks/jira-read-v1/README.md) | Measured payload and latency evidence |
 | [Architecture backlog](docs/architecture/backlog.md) | Deferred work, with reasons |
 

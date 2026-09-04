@@ -87,6 +87,7 @@ export async function planWrite(
   const plan = deps.writePlans.create({
     kind: "existing-issue",
     issueKey,
+    issueId: snapshot.issueId,
     projectKey,
     operation,
     before,
@@ -105,6 +106,7 @@ export async function planWrite(
       status: "planned",
       planId: plan.planId,
       issue: plan.issueKey,
+      issueId: plan.issueId,
       operation: plan.operation,
       before: plan.before,
       intendedAfter: plan.intendedAfter,
@@ -128,6 +130,16 @@ export async function planWrite(
  */
 export type IssueSnapshot = {
   issue: FullIssueContext;
+  /**
+   * The issue's canonical Jira id, carried separately because the write plane
+   * requires it and the read shape only offers it.
+   *
+   * A key is a locator: Jira can move one between issues, and an integration
+   * that recorded a key months ago is holding a string, not a target. Every
+   * write is pinned to this instead - planned against it, re-checked against
+   * it before the mutation, and confirmed against it afterwards.
+   */
+  issueId: string;
   /** Identity of the current assignee, which `issue.assignee` cannot supply. */
   assigneeAccountId?: string;
 };
@@ -160,7 +172,26 @@ export async function readIssue(deps: JamDeps, issueKey: string): Promise<IssueS
       { issueKey },
     );
   }
-  return { issue: found, ...(assigneeAccountId ? { assigneeAccountId } : {}) };
+
+  // Jira answered with an issue but named no canonical id. That is not a
+  // resolution JAM can build a write on, and it is refused here - at the one
+  // read every write goes through - rather than by filling the field with an
+  // empty string and carrying a fake identity into a plan. Reads are
+  // unaffected: a list of issues is not invalidated because one entry arrived
+  // thin, and only the write plane treats identity as proof.
+  if (!found.issueId) {
+    throw new JamError(
+      "PARTIAL_RESULT",
+      `Jira returned ${issueKey} without a canonical issue id, so JAM cannot confirm which issue this key currently names. Read the issue in Jira before changing it.`,
+      { issueKey },
+    );
+  }
+
+  return {
+    issue: found,
+    issueId: found.issueId,
+    ...(assigneeAccountId ? { assigneeAccountId } : {}),
+  };
 }
 
 /**
