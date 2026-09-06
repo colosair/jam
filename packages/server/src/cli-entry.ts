@@ -3,6 +3,7 @@ import { doctor } from "./cli/doctor.js";
 import { showRuntime, useRuntime } from "./cli/runtime.js";
 import { serve } from "./cli/serve.js";
 import { setup } from "./cli/setup.js";
+import { jamUpdateCommand } from "./cli/update.js";
 import { runSetupWizard } from "./cli/setup-wizard.js";
 import { reportPromptError, Ui } from "./cli/ui.js";
 import {
@@ -28,6 +29,8 @@ Usage:
                           Wire up this project and run doctor. Binds it to you
                           alone, writing nothing to the repository; --shared
                           adopts JAM for the team (project.yaml, .mcp.json)
+  jam update              Move this machine's registration to the published release
+  jam update check        What is registered, what is published (changes nothing)
   jam runtime             Show which JAM build this machine runs
   jam runtime use package | development <path>
                           Change it (writes ~/.jam/config.yaml only, never a project)
@@ -109,6 +112,13 @@ export async function runJamCommand(argv: string[]): Promise<number> {
       // The wizard can ask; the plain path never does.
       return rest.includes("--non-interactive") ? setup(common) : runSetupWizard(common);
     }
+
+    case "update":
+      // Not `setup` again: setup re-plans the project binding, credentials and
+      // everything else. An update moves the registration pin and nothing more.
+      return jamUpdateCommand(rest[0] === "--json" ? undefined : rest[0], {
+        json: rest.includes("--json"),
+      });
 
     case "runtime": {
       const json = rest.includes("--json");
