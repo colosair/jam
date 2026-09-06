@@ -170,7 +170,7 @@ If asked to set JAM up somewhere, use the official setup path — do not work ou
 an installation procedure from the README. One command does the whole thing:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.5.0 setup --agent
+npx --yes @jam-mcp/bootstrap@1.6.0 setup --agent
 ```
 
 **If you are reading this inside a clone of the JAM repository** — because
@@ -199,7 +199,7 @@ before re-registering, reads the registration back, and finishes with `doctor` �
 so a registration that lands but is not healthy is rolled back.
 
 ```bash
-jam update              # or: npx --yes @jam-mcp/bootstrap@1.5.0 update
+jam update              # or: npx --yes @jam-mcp/bootstrap@1.6.0 update
 jam update check --json # what is registered, what is published; changes nothing
 ```
 
@@ -212,9 +212,9 @@ then `asc update`, and report both.
 To inspect before acting, the same three steps separately:
 
 ```bash
-npx --yes @jam-mcp/bootstrap@1.5.0 setup plan --json                     # what would change; changes nothing
-npx --yes @jam-mcp/bootstrap@1.5.0 setup apply --non-interactive --json  # execute it
-npx --yes @jam-mcp/bootstrap@1.5.0 doctor --json                         # verify
+npx --yes @jam-mcp/bootstrap@1.6.0 setup plan --json                     # what would change; changes nothing
+npx --yes @jam-mcp/bootstrap@1.6.0 setup apply --non-interactive --json  # execute it
+npx --yes @jam-mcp/bootstrap@1.6.0 doctor --json                         # verify
 ```
 
 Run them through `npx` exactly as written. A bare `jam` is a convenience some
@@ -275,8 +275,8 @@ Code that is `~/.claude/settings.json`:
 {
   "permissions": {
     "allow": [
-      "Bash(npx --yes @jam-mcp/bootstrap@1.5.0 setup --agent)",
-      "Bash(npx --yes @jam-mcp/bootstrap@1.5.0 runtime use package)"
+      "Bash(npx --yes @jam-mcp/bootstrap@1.6.0 setup --agent)",
+      "Bash(npx --yes @jam-mcp/bootstrap@1.6.0 runtime use package)"
     ]
   }
 }
@@ -293,7 +293,7 @@ tooling, and never reach for a shell variant, a wrapper script, or a different
 runner to get past a refusal. If the user declines, that is an answer: say what
 cannot be done without it.
 
-Finish with `npx --yes @jam-mcp/bootstrap@1.5.0 doctor --json`.
+Finish with `npx --yes @jam-mcp/bootstrap@1.6.0 doctor --json`.
 
 Authentication is the one step that is not yours to do. `JAM_AUTH_REQUIRED`
 carries no `command` for exactly that reason — what it carries is a

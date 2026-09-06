@@ -4,6 +4,7 @@ import { showRuntime, useRuntime } from "./cli/runtime.js";
 import { serve } from "./cli/serve.js";
 import { setup } from "./cli/setup.js";
 import { jamUpdateCommand } from "./cli/update.js";
+import { jamRefreshCommand, jamStatusCommand, jamUninstallCommand } from "./cli/lifecycle.js";
 import { runSetupWizard } from "./cli/setup-wizard.js";
 import { reportPromptError, Ui } from "./cli/ui.js";
 import {
@@ -22,33 +23,44 @@ import { runJiraRead } from "./cli/jira-read.js";
  */
 export const USAGE = `jam - Jira Agent MCP
 
-Usage:
-  jam serve               Run the MCP server over stdio (default; this is what Claude Code / Codex launch)
-  jam doctor              Diagnose config, credentials and Jira connectivity
+Lifecycle (the same words ASC uses)
   jam setup [--project KEY] [--shared] [--migrate] [--non-interactive]
-                          Wire up this project and run doctor. Binds it to you
+                          Wire up this project and verify it. Binds it to you
                           alone, writing nothing to the repository; --shared
                           adopts JAM for the team (project.yaml, .mcp.json)
+  jam status              What is configured, what works, what is blocked
   jam update              Move this machine's registration to the published release
-  jam update check        What is registered, what is published (changes nothing)
+  jam refresh             Keep the version; re-register what this build owns
+  jam uninstall           Remove JAM's registrations; your bindings and credentials stay
   jam runtime             Show which JAM build this machine runs
   jam runtime use package | development <path>
                           Change it (writes ~/.jam/config.yaml only, never a project)
-  jam auth login          Store Jira credentials in this user's OS secret store
-  jam auth logout         Remove them again
+
+Jira
+  jam jira search <jql> [--scope preview|complete]
+  jam jira context <KEY> [KEY...]
+  jam jira full <KEY> [KEY...]
+                          Read Jira from the shell - the same reads the MCP
+                          tools do, for a session that cannot see them yet
+
+Authentication
+  jam auth status [--json]  Whether Jira credentials are configured (never their value)
+  jam auth login            Store them in this user's OS secret store
+  jam auth logout           Remove them again
 
 For coding agents and scripts (stdout is JSON only, never prompts):
   jam setup --agent       One shot: detect, plan, apply what is safe, verify
   jam setup plan --json   Report what setup would change, changing nothing
   jam setup apply --non-interactive --json
                           Execute the plan
-  jam doctor --json       Health check as structured output
-  jam auth status --json  Whether Jira credentials are configured (never their value)
-  jam jira search <jql> [--scope preview|complete]
-  jam jira context <KEY> [KEY...]
-  jam jira full <KEY> [KEY...]
-                          Read Jira from the shell - the same reads the MCP
-                          tools do, for a session that cannot see them yet
+  jam status --json       Health check as structured output
+  jam update check|plan [--json]
+  jam refresh check|plan [--json]
+  jam uninstall plan [--json]
+
+Host runtime
+  jam serve               Run the MCP server over stdio - this is what Claude
+                          Code and Codex launch. Not a command a person types.
 
 Environment:
   JIRA_BASE_URL     https://your-site.atlassian.net
@@ -90,7 +102,13 @@ export async function runJamCommand(argv: string[]): Promise<number> {
     case "serve":
       return serve();
 
+    case "status":
+      return jamStatusCommand({ json: rest.includes("--json") });
+
+    // The old name for the same question. It keeps working for two minor
+    // releases; `status` is the word both products answer to.
     case "doctor":
+      process.stderr.write("Deprecated. Use `jam status`.\n");
       return rest.includes("--json") ? doctorJsonCommand() : doctor();
 
     case "setup": {
@@ -117,6 +135,18 @@ export async function runJamCommand(argv: string[]): Promise<number> {
       // Not `setup` again: setup re-plans the project binding, credentials and
       // everything else. An update moves the registration pin and nothing more.
       return jamUpdateCommand(rest[0] === "--json" ? undefined : rest[0], {
+        json: rest.includes("--json"),
+      });
+
+    case "refresh":
+      // Not `update`: the version does not move here. Only the registration
+      // this build owns is brought back to it.
+      return jamRefreshCommand(rest[0]?.startsWith("--") ? undefined : rest[0], {
+        json: rest.includes("--json"),
+      });
+
+    case "uninstall":
+      return jamUninstallCommand(rest[0]?.startsWith("--") ? undefined : rest[0], {
         json: rest.includes("--json"),
       });
 
