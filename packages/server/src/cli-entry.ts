@@ -12,6 +12,7 @@ import {
   setupApplyCommand,
   setupPlanCommand,
 } from "./cli/agent-api.js";
+import { runJiraRead } from "./cli/jira-read.js";
 
 /**
  * Command dispatch for the JAM CLI, separated from the bin so other entry
@@ -40,6 +41,11 @@ For coding agents and scripts (stdout is JSON only, never prompts):
                           Execute the plan
   jam doctor --json       Health check as structured output
   jam auth status --json  Whether Jira credentials are configured (never their value)
+  jam jira search <jql> [--scope preview|complete]
+  jam jira context <KEY> [KEY...]
+  jam jira full <KEY> [KEY...]
+                          Read Jira from the shell - the same reads the MCP
+                          tools do, for a session that cannot see them yet
 
 Environment:
   JIRA_BASE_URL     https://your-site.atlassian.net
@@ -120,6 +126,11 @@ export async function runJamCommand(argv: string[]): Promise<number> {
       process.stderr.write("Usage: jam auth login | status [--json] | logout\n");
       return 1;
     }
+
+    case "jira":
+      // Reads addressed to the shell, for a session that cannot see the MCP
+      // tools yet. Same application path as the tools - see cli/jira-read.ts.
+      return runJiraRead(rest);
 
     case "help":
     case "--help":
