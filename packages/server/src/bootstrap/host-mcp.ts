@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { JAM_MCP_ENTRY } from "./mcp-config-merger.js";
+import { LAUNCHER_PACKAGE } from "@jam-mcp/launcher";
+import { JAM_MCP_ENTRY, LAUNCHER_PACKAGE_SPEC } from "./mcp-config-merger.js";
 import { shellInvocation, stripPackageRunnerPath } from "./shell-command.js";
 
 /**
@@ -143,11 +144,21 @@ const ADAPTERS: HostAdapter[] = [
 
 export function hostRegistration(
   id: HostId,
-  options: { bare?: boolean } = {},
+  options: { bare?: boolean; version?: string } = {},
 ): HostCommand | undefined {
   const adapter = ADAPTERS.find((a) => a.id === id);
   if (!adapter) return undefined;
-  if (!options.bare) return adapter.register;
+  if (!options.bare) {
+    // `jam update` registers a version this build is not - that is the whole
+    // point of an update. Only the pin moves; the rest of the argv is the same
+    // line setup writes, so the two cannot drift into different registrations.
+    if (!options.version) return adapter.register;
+    const pinned = `${LAUNCHER_PACKAGE}@${options.version}`;
+    return {
+      command: adapter.register.command,
+      args: adapter.register.args.map((arg) => (arg === LAUNCHER_PACKAGE_SPEC ? pinned : arg)),
+    };
+  }
   const at = adapter.register.args.indexOf("--");
   return { command: adapter.register.command, args: [...adapter.register.args.slice(0, at), ...LAUNCH_BARE] };
 }
