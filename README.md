@@ -213,7 +213,7 @@ export JIRA_API_TOKEN=...
 
 On Windows a value set with `setx` doesn't reach `process.env` until a new
 shell, so JAM falls back to the Windows **User** environment
-(`HKCU\Environment`). `jam doctor` shows which source supplied it
+(`HKCU\Environment`). `jam status` shows which source supplied it
 (`process` / `user-env` / `mixed`).
 
 ## Setup with a coding agent
@@ -359,7 +359,7 @@ yourself, never put it in the repository so the project approves its own
 tooling, and never reach for a shell variant, a wrapper script, or a different
 runner to get past a refusal. If the user declines, that is an answer.
 
-Finish with `npx --yes @jam-mcp/bootstrap@1.6.0 doctor --json`.
+Finish with `npx --yes @jam-mcp/bootstrap@1.6.0 status --json`.
 
 ## Commands
 
@@ -368,21 +368,33 @@ install above. Everything works the same as `npx --yes @jam-mcp/launcher@1.6.0
 …` if you skipped it.
 
 ```text
-jam serve                    Run the MCP server over stdio (what Claude Code / Codex launch)
-jam doctor                   Diagnose config, credentials and Jira connectivity
 jam setup [--project KEY] [--shared] [--migrate]
                              Wire up JAM and verify. Personal by default; --shared
                              writes the project files for the team (--migrate
                              rewrites a legacy jam entry, only if its target resolves)
+jam status                   What is configured, what works, what is blocked
+jam update                   Move this machine's registration to the published release
+jam refresh                  Keep the version; re-register what this build owns
+jam uninstall                Remove JAM's registrations; bindings and credentials stay
 jam runtime                  Show which JAM build this machine runs
 jam runtime use package | development <path>
                              Change it (writes ~/.jam/config.yaml only, never a project)
 jam auth login               Store Jira credentials in this user's OS secret store
 jam auth status              Whether Jira credentials are configured
 jam auth logout              Remove the stored credentials
+jam serve                    Run the MCP server over stdio — what Claude Code and Codex
+                             launch, not something a person types
 ```
 
-`jam doctor` answers one question fast — is this a Jira problem, a credential
+Those six lifecycle words — `setup`, `status`, `update`, `refresh`, `uninstall`,
+`runtime` — are the same ones ASC answers to, so nobody has to remember which
+product uses which verb. Shared vocabulary, separate releases: neither product
+updates the other, and neither pins the other's version.
+
+`jam doctor` still works and is the older name for `jam status`; it prints a
+deprecation line and does the same thing.
+
+`jam status` answers one question fast — is this a Jira problem, a credential
 problem, or a local setup problem?
 
 ```text
@@ -397,7 +409,7 @@ problem, or a local setup problem?
 [OK]   Issue detail endpoint - reachable (PROJECT-101)
 ```
 
-`jam doctor --json` adds a `diagnosis` block with one verdict per axis —
+`jam status --json` adds a `diagnosis` block with one verdict per axis —
 `credentials`, `projectBinding`, `runtime`, `registration`, `liveToolset`,
 `jiraAuthentication`, `jiraProjectAccess` — so a failure is attributed rather
 than guessed at. `source: "mixed"` means the three fields resolved from more
@@ -408,7 +420,7 @@ accepts the credentials is the `jiraAuthentication` axis, separately. No
 credential value appears in any output.
 
 `jam serve` runs local checks only before starting, so Jira's latency never
-delays your editor's startup; `jam doctor` and `jam setup` add the live
+delays your editor's startup; `jam status` and `jam setup` add the live
 connectivity checks.
 
 ## What gets written
@@ -507,7 +519,8 @@ and for the five changes it can make safely.
 | [Distribution and bootstrap](docs/architecture/distribution-and-bootstrap.md) | Package/development runtimes, the launcher, plan/apply, version policy, roadmap |
 | [ADR: unified runtime and agent setup](docs/decisions/adr-unified-runtime-and-agent-setup.md) | Why setup branches early and converges, and what that cost |
 | [Setup UX contract](docs/operations/setup-ux.md) | CLI symbols, colour, prompts, `NO_COLOR`/non-TTY, JSON output rules |
-| [JAM design of record](docs/architecture/jira-agent-mcp-design.md) | The three-tool contract and read policy |
+| [Current architecture](docs/architecture/current-architecture.md) | What JAM is today: five tools, the read and write paths, the boundaries |
+| [JAM design of record](docs/architecture/jira-agent-mcp-design.md) | The frozen design baseline the later documents refer back to |
 | [ADR: Jira read optimization](docs/decisions/adr-jam-jira-read-optimization.md) | Why reads are mediated at all |
 | [ADR: the Jira write plane](docs/decisions/adr-jira-write-plane.md) | Plan/apply, conflict detection, verification, and where plans live |
 | [ADR: Jira reference integrity](docs/decisions/adr-jira-reference-integrity.md) | Why a key is never predicted, and why `issueId` travels with it |
