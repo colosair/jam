@@ -1,6 +1,6 @@
 # Setup UX contract
 
-What `jam setup`, `jam runtime` and `jam doctor` are allowed to put on a
+What `jam setup`, `jam runtime` and `jam status` are allowed to put on a
 terminal, and what they must emit when there is no terminal at all.
 
 The standard this is written to:

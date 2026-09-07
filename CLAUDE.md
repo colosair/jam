@@ -107,29 +107,21 @@ never reported to the user as done.
 A Jira issue key is minted by Jira. It is never a value to work out.
 
 **Never synthesize, increment, predict, reserve, or infer the availability of a
-Jira issue key.** Not the next number in a project, not a gap in a sequence,
-not a number that looks unclaimed.
+Jira issue key.** Before a key becomes a durable reference — a branch, a commit,
+a PR, a document, a link — positively resolve that exact key against live Jira
+with `jira_context`; an issue coming back is the resolution. A key JAM could not
+read comes back in `meta.missingKeys`, and **it is not evidence that the number
+is free**: a number nobody holds today can be minted tomorrow, and every
+reference already written against it then points at somebody else's work.
 
-Before reusing a key as a durable reference - anything that outlives the
-conversation: a branch name, a commit message, a pull request, a document, a
-link - positively resolve that exact key against live Jira with `jira_context`.
-An issue coming back is the resolution: that key names that issue, right now.
+`key` is a locator Jira can re-point; `issueId` is the immutable id and is on
+every issue JAM returns. When a reference has to survive, record `issueId` beside
+the key. To get a key for work that has no issue yet, create the issue
+(`jira_write_plan` with `issue.create`, then `jira_write_apply`) and use the key
+in the receipt. There is no other way to come by one.
 
-A key JAM could not read is unusable. It comes back in `meta.missingKeys`,
-which means it resolved to nothing this account can see - the issue may not
-exist, or may not be visible, and from here those are the same answer. **It is
-not evidence that the number is free.** A number nobody holds today can be
-minted tomorrow, and every reference already written against it then quietly
-becomes a reference to somebody else's work.
-
-Identity and locator are not the same thing. `key` is the current locator, and
-Jira can move it to another issue. `issueId` is the immutable id, and it is on
-every issue JAM returns. When a reference has to survive, record `issueId`
-beside the key.
-
-To get a key for work that has no issue yet, create the issue - `jira_write_plan`
-with `issue.create`, then `jira_write_apply` - and use the key Jira returns in
-the receipt. There is no other way to come by one.
+The long form of this rule, with the failure it comes from, is in `AGENTS.md`
+under the same heading.
 
 ## Absence of evidence is not evidence of absence
 

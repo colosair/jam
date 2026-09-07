@@ -205,9 +205,14 @@ for (const path of AGENT_DOCS) {
 //
 // This pins the mirror, and nothing else. Whether either file agrees with the
 // code is a different question and not one this check answers.
+//
+// "Jira issue keys" used to be pinned here too, word for word. That made the
+// two files carry the same 29 lines of prose and made every rewording a gate
+// failure - so the wording was frozen for the wrong reason. What has to hold is
+// the three load-bearing claims, and 9a checks exactly those in both files.
+// AGENTS.md carries the long form; CLAUDE.md carries the contract and points at it.
 const MIRRORED_SECTIONS = [
   ["## Installing JAM into another project", "the agent install rules live there"],
-  ["## Jira issue keys", "the Jira reference-safety rules live there"],
 ];
 const section = (path, heading, why) => {
   const text = read(path);

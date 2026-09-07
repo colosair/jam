@@ -1,5 +1,16 @@
 # Jira Agent MCP — 종합 설계도
 
+> **HISTORICAL DESIGN BASELINE.** 이 문서는 JAM 이 자라 나온 설계 기준이며, 여러 문서와
+> ADR 이 "design of record" 로 이것을 가리킨다. 그래서 경로와 절 번호를 바꾸지 않고,
+> 본문 문장도 현재 시제로 고쳐 쓰지 않는다.
+>
+> **현재 아키텍처는 여기 있다: `docs/architecture/current-architecture.md`.**
+>
+> 그 뒤 실제로 달라진 것 중 이름을 댈 만한 것: 외부 Tool 은 3개가 아니라 **5개**다
+> (읽기 3 + 쓰기 2 — 쓰기 평면은 `docs/decisions/adr-jira-write-plane.md` 에서 들어왔다).
+> lifecycle 명령은 setup·status·update·refresh·uninstall·runtime 이고, `doctor` 는
+> `status` 의 옛 이름이다.
+>
 > **목표:** 빠른 스트레이트 개발 + 내부 복잡성 수용 + 외부 단순성 + 즉시 팀 도입  
 > **핵심 원칙:** **설계는 V3 기준, 구현은 V1 범위, 외부 계약은 처음부터 고정한다.**
 
