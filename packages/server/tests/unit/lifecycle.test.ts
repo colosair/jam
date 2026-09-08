@@ -39,25 +39,25 @@ function recorder(answers: (cmd: HostCommand) => HostRunResult) {
 
 describe("planRefresh", () => {
   it("a line pinned to another version is what refresh converges", () => {
-    const plan = planRefresh([claude({ entryVersion: "1.4.6" })], "1.6.0");
-    expect(plan.version).toBe("1.6.0");
+    const plan = planRefresh([claude({ entryVersion: "1.4.6" })], "1.7.0");
+    expect(plan.version).toBe("1.7.0");
     expect(plan.hosts[0]).toMatchObject({ id: "claude-code", from: "1.4.6", action: "repin" });
     expect(plan.steps).toEqual(["switch-registration", "verify"]);
   });
 
   it("a line already on this version is left alone", () => {
-    const plan = planRefresh([claude({ entryVersion: "1.6.0" })], "1.6.0");
+    const plan = planRefresh([claude({ entryVersion: "1.7.0" })], "1.7.0");
     expect(plan.hosts[0]?.action).toBe("none");
     expect(plan.steps).toEqual([]);
   });
 
   it("a bare entry runs the executable, so the line has nothing to move", () => {
-    const plan = planRefresh([claude({ entryBare: true, entryVersion: "1.4.6" })], "1.6.0");
+    const plan = planRefresh([claude({ entryBare: true, entryVersion: "1.4.6" })], "1.7.0");
     expect(plan.hosts[0]?.action).toBe("none");
   });
 
   it("a host with no jam entry is not adopted here — that is setup", () => {
-    expect(planRefresh([claude({ hasJamEntry: false })], "1.6.0").hosts).toEqual([]);
+    expect(planRefresh([claude({ hasJamEntry: false })], "1.7.0").hosts).toEqual([]);
   });
 
   it("refresh never claims a version this build is not", () => {
