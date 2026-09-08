@@ -340,6 +340,36 @@ describe("a write whose outcome is unknown", () => {
     expect(jiraWrite.mutations).toBe(0);
   });
 
+  it("has already spent the plan, so a retry cannot reach Jira at all", async () => {
+    // What stops the second comment is not a branch inside apply - it is that
+    // the plan was claimed on the way in and is not there any more. Worth
+    // pinning since plans became files: the claim is a rename now, and the
+    // guidance attached to JAM_WRITE_UNCERTAIN rests on it.
+    const { jiraWrite, deps } = setup();
+    const { plan } = await planWrite(deps, {
+      key: "PROJECT-1",
+      operation: "comment.add",
+      input: { text: "maybe sent" },
+    });
+
+    jiraWrite.failNext = new JamError("JIRA_UNAVAILABLE", "socket hang up");
+    expect((await failure(() => applyWritePlan(deps, { planId: plan.planId }))).code).toBe(
+      "JAM_WRITE_UNCERTAIN",
+    );
+    const afterFirst = jiraWrite.mutations;
+
+    // The agent ignores "do not retry" and calls again with the same planId.
+    expect((await failure(() => applyWritePlan(deps, { planId: plan.planId }))).code).toBe(
+      "JAM_WRITE_PLAN_NOT_FOUND",
+    );
+
+    // The armed failure was consumed by the first attempt, so a second call to
+    // the write port would have succeeded and left a comment behind. Nothing
+    // was left behind, which is how this says the port was never entered.
+    expect(jiraWrite.comments).toHaveLength(0);
+    expect(jiraWrite.mutations).toBe(afterFirst);
+  });
+
   it("leaves a definite refusal definite", async () => {
     const { jiraWrite, deps } = setup();
     const { plan } = await planWrite(deps, {
