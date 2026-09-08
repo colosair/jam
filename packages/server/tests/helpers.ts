@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import type { JamDeps } from "../src/deps.js";
 import { ProjectConfigSchema, type ProjectConfig } from "../src/config/schema.js";
@@ -178,11 +179,25 @@ export class FakeJira implements JiraReadPort {
   }
 }
 
+/**
+ * A plan store that never touches the real `~/.jam`.
+ *
+ * Plans became files so both transports can reach one, which means the default
+ * store now writes to the user's home. A suite that used the default would put
+ * test plans there - so every test gets its own throwaway directory instead.
+ */
+export function testWritePlanStore(now?: () => Date): WritePlanStore {
+  return new WritePlanStore({
+    root: mkdtempSync(join(tmpdir(), "jam-plans-")),
+    ...(now ? { now } : {}),
+  });
+}
+
 export function testDeps(
   jira: JiraReadPort,
   config: ProjectConfig = testConfig(),
   jiraWrite: JiraWritePort = new UnreachableJiraWrite(),
-  writePlans: WritePlanStore = new WritePlanStore(),
+  writePlans: WritePlanStore = testWritePlanStore(),
   jiraCreateMetadata: JiraCreateMetadataPort = new UnreachableCreateMetadata(),
   jiraAssignees: JiraAssigneeResolutionPort = new UnreachableAssignees(),
 ): JamDeps {

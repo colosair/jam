@@ -17,7 +17,7 @@ import type {
   SearchPageRequest,
   SearchPageResult,
 } from "../../src/ports/jira-read.port.js";
-import { FakeJiraWrite, issue, testConfig, testDeps } from "../helpers.js";
+import { FakeJiraWrite, issue, testConfig, testDeps, testWritePlanStore } from "../helpers.js";
 
 /**
  * Applying is the half that changes something, so these tests are about the
@@ -81,7 +81,7 @@ function setup(overrides: Partial<FullIssueContext> = {}, transitions: FakeJiraW
     }),
   );
   const jiraWrite = new FakeJiraWrite({ transitions });
-  const deps: JamDeps = testDeps(jira, testConfig(), jiraWrite, new WritePlanStore());
+  const deps: JamDeps = testDeps(jira, testConfig(), jiraWrite, testWritePlanStore());
   return { jira, jiraWrite, deps };
 }
 
@@ -255,7 +255,7 @@ describe("a write that must not happen", () => {
   it("refuses an expired plan, and says to re-plan rather than that it is missing", async () => {
     const { jira, jiraWrite, deps } = setup();
     let now = new Date();
-    const store = new WritePlanStore(() => now);
+    const store = testWritePlanStore(() => now);
     const withStore: JamDeps = { ...deps, writePlans: store };
 
     const { plan } = await planWrite(withStore, {

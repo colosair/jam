@@ -10,8 +10,7 @@ import {
   issue,
   testConfig,
   testDeps,
-  UnreachableCreateMetadata,
-} from "../helpers.js";
+  UnreachableCreateMetadata, testWritePlanStore } from "../helpers.js";
 
 /**
  * Assigning an issue to a person.
@@ -42,7 +41,7 @@ function setup(options: { assignee?: { accountId: string; displayName: string } 
     jira,
     testConfig({ project: { key: "PROJECT" } }),
     write,
-    new WritePlanStore(),
+    testWritePlanStore(),
     new UnreachableCreateMetadata(),
     assignees,
   );

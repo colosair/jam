@@ -45,6 +45,11 @@ export const JAM_ERROR_CODES = [
   "JAM_WRITE_ASSIGNEE_ALREADY_SET",
   "JAM_WRITE_PLAN_NOT_FOUND",
   "JAM_WRITE_PLAN_EXPIRED",
+  // A stored plan that does not describe a change JAM would make. Plans live in
+  // a file so both transports can reach one, and apply re-derives the mutation
+  // from the plan's own input rather than trusting what the file says. Distinct
+  // from CONFLICT: nothing moved, the plan itself does not hold up.
+  "JAM_WRITE_PLAN_TAMPERED",
   "JAM_WRITE_CONFLICT",
   "JAM_WRITE_VERIFICATION_FAILED",
   "JAM_WRITE_UNCERTAIN",

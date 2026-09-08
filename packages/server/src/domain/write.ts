@@ -185,6 +185,18 @@ type WritePlanCommon = {
   expiresAt: string;
   /** Normalized payload the apply step will send. Never supplied by a caller. */
   mutation: WriteMutation;
+  /**
+   * The validated input the mutation was derived from.
+   *
+   * Kept so apply can derive the mutation again and compare. Plans live in a
+   * file now, and a file can be edited - re-deriving is what makes that
+   * pointless: changing the mutation without changing the input is caught, and
+   * changing both is just calling plan again.
+   *
+   * Validated, not raw: what a caller sent has already been checked against the
+   * operation's whitelist by the time it lands here.
+   */
+  input: Record<string, unknown>;
 };
 
 /**

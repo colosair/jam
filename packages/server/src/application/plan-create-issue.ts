@@ -111,6 +111,7 @@ export async function planCreateIssue(
       kind: "create",
       fields: toJiraCreateFields(projectKey, issueType.id, input, { priority, components }),
     },
+    input: request.input,
   }) as CreateIssueWritePlan;
 
   return {
@@ -217,7 +218,13 @@ function notAllowed(message: string): JamError {
 }
 
 /** Whitelisted values to the shapes Jira's create API expects. */
-function toJiraCreateFields(
+/**
+ * Exported because apply derives these again and compares - see
+ * `assertCreateMutationMatchesInput` in apply-create-issue.ts. Planning and
+ * applying must produce the same fields from the same input, so they call one
+ * function rather than two that are supposed to agree.
+ */
+export function toJiraCreateFields(
   projectKey: string,
   issueTypeId: string,
   input: CreateIssueInput,
