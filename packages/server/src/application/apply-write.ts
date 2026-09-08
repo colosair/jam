@@ -1,12 +1,18 @@
 import type { JamDeps } from "../deps.js";
 import type { FullIssueContext } from "../domain/context.js";
 import { JamError, toJamError } from "../domain/errors.js";
-import type { ExistingIssueWritePlan, WriteApplyReceipt } from "../domain/write.js";
+import type {
+  ExistingIssueWritePlan,
+  FieldUpdateInput,
+  WriteApplyReceipt,
+  WriteInput,
+  WriteMutation,
+} from "../domain/write.js";
 import { readModeAfterWrite } from "../policy/consistency-policy.js";
 import { assertAssignable } from "../policy/assignee-policy.js";
 import { assertSameIssue, assertUnchanged } from "../policy/write-policy.js";
 import { applyCreateIssue } from "./apply-create-issue.js";
-import { readIssue } from "./plan-write.js";
+import { readIssue, toJiraFields, validateInput } from "./plan-write.js";
 
 export type ApplyWriteRequest = { planId: string };
 
@@ -53,6 +59,12 @@ export async function applyWritePlan(
   assertSameIssue(plan.issueKey, plan.issueId, current.issueId);
   assertUnchanged(plan.issueKey, plan.baseUpdated, current.issue.updated);
 
+  // The plan came off disk, so derive its mutation again and check it is the
+  // one stored. This is after the revision check on purpose: a moved issue is
+  // a conflict, not tampering, and saying so in that order keeps the two
+  // situations from being reported as each other.
+  assertMutationMatchesInput(plan);
+
   // Whatever the plan depends on that the revision check cannot see, checked
   // again here. For an assignment that is the target's permission to hold this
   // issue: it can be revoked between planning and applying, and a plan that
@@ -75,6 +87,91 @@ export async function applyWritePlan(
     verified: true,
     ...(outcome.commentId ? { commentId: outcome.commentId } : {}),
   };
+}
+
+/**
+ * Check the stored mutation is the one this plan's input produces.
+ *
+ * Plans used to live in the process that made them, so what apply sent could
+ * only have come from planning. They live in a file now - shared so that a
+ * session whose MCP channel died can still apply one from the shell - and a
+ * file can be edited.
+ *
+ * What replaces the in-process guarantee is this: run the same derivation
+ * planning ran, on the plan's own input, and refuse if the answer differs.
+ * Editing `mutation` alone is caught here. Editing `input` to match means
+ * asking JAM to derive that mutation, which is what `jira_write_plan` is - so
+ * there is nothing to gain by forging a plan that could not be obtained by
+ * asking for one.
+ *
+ * Nothing has been sent to Jira when this refuses.
+ */
+function assertMutationMatchesInput(plan: ExistingIssueWritePlan): void {
+  let derived: WriteMutation;
+  try {
+    // Through validateInput first: the whitelist is part of the derivation, so
+    // a plan carrying a field JAM does not write is refused here rather than
+    // sent. Re-deriving without it would let an edited input past the check
+    // planning applied to it.
+    const input = validateInput(plan.operation, plan.input);
+    derived = deriveMutation(plan, input);
+  } catch (err) {
+    // A plan whose input no longer derives anything is not a plan. Say that,
+    // rather than letting the original refusal read as a fresh request being
+    // rejected.
+    throw new JamError(
+      "JAM_WRITE_PLAN_TAMPERED",
+      `This write plan does not describe a change JAM would make for ${plan.issueKey}. Nothing was written - call jira_write_plan again.`,
+      { planId: plan.planId, issueKey: plan.issueKey, reason: toJamError(err).code },
+    );
+  }
+
+  if (JSON.stringify(derived) !== JSON.stringify(plan.mutation)) {
+    throw new JamError(
+      "JAM_WRITE_PLAN_TAMPERED",
+      `This write plan's recorded change does not match what its input produces for ${plan.issueKey}. Nothing was written - call jira_write_plan again.`,
+      { planId: plan.planId, issueKey: plan.issueKey },
+    );
+  }
+}
+
+/**
+ * The mutation this plan's input produces, without asking Jira anything.
+ *
+ * Planning calls Jira for two of these - the transition list, the user
+ * directory - and records what it settled on. Re-deriving here reads those
+ * recorded answers rather than fetching them again, for two reasons: apply
+ * would otherwise pay a round trip it does not need, and planning's lookups
+ * carry refusals that belong to planning (`already assigned`, `not
+ * assignable`). Running those a second time would report a check on the
+ * current state as if the plan were malformed.
+ *
+ * What is being checked is narrower and enough: the mutation must be the one
+ * this plan's own parts describe. An edit to `mutation` alone is caught. An
+ * edit that also rewrites the input and the recorded resolution is a different
+ * plan, obtainable by asking for one - and Jira still has to accept it.
+ */
+function deriveMutation(plan: ExistingIssueWritePlan, input: WriteInput): WriteMutation {
+  switch (plan.operation) {
+    case "comment.add":
+      return { kind: "comment", text: (input as { text: string }).text };
+    case "field.update":
+      return { kind: "fields", fields: toJiraFields(input as FieldUpdateInput) };
+    case "status.transition": {
+      // The id came from Jira at plan time and is recorded; what is verified is
+      // that the plan still points at its own resolution.
+      const transition = plan.transition;
+      if (!transition) throw new JamError("CONFIG_INVALID", "A transition plan must record its transition.");
+      return { kind: "transition", transitionId: transition.id };
+    }
+    case "assignee.update": {
+      const target = plan.intendedAfter["assignee"] as { accountId?: string } | undefined;
+      if (!target?.accountId) {
+        throw new JamError("CONFIG_INVALID", "An assignment plan must record who it resolved to.");
+      }
+      return { kind: "assignee", accountId: target.accountId };
+    }
+  }
 }
 
 /**

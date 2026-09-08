@@ -3,8 +3,9 @@ import type { FullIssueContext } from "../domain/context.js";
 import { JamError, toJamError } from "../domain/errors.js";
 import type { CreateIssueInput, CreateIssueWritePlan, WriteApplyReceipt } from "../domain/write.js";
 import { canonicalizePlainText } from "../domain/adf.js";
-import { assertSchemaUnchanged } from "../policy/create-policy.js";
+import { assertSchemaUnchanged, CREATE_FIELD_IDS } from "../policy/create-policy.js";
 import { projectKeyOf } from "../policy/write-policy.js";
+import { toJiraCreateFields, validateCreateInput } from "./plan-create-issue.js";
 import { readIssue } from "./plan-write.js";
 
 /**
@@ -32,6 +33,12 @@ export async function applyCreateIssue(
     throw new JamError("CONFIG_INVALID", "A create-issue plan must carry a create mutation.");
   }
 
+  // Plans come off disk now, so the fields being sent are checked against what
+  // this plan's own input produces before anything is created. Editing the
+  // stored mutation without editing the input is caught here; editing both is
+  // asking JAM to plan that create, which is the supported way to get one.
+  assertCreateMutationMatchesInput(plan);
+
   await revalidateSchema(deps, plan);
 
   const created = await create(deps, plan);
@@ -58,6 +65,61 @@ export async function applyCreateIssue(
  * not "is the schema identical" - on an active project it rarely is - but "are
  * this plan's premises still true". See assertSchemaUnchanged.
  */
+/**
+ * Check the stored create fields are the ones this plan's input produces.
+ *
+ * The existing-issue path does the same thing in apply-write.ts, and for the
+ * same reason: a plan is a file, and re-deriving is what makes editing it
+ * pointless. Creation can do it without touching Jira - `toJiraCreateFields`
+ * is pure once the issue type and resolved values are known, and those are in
+ * `schemaRequirements`, which `revalidateSchema` checks against Jira right
+ * after this.
+ *
+ * Nothing has been created when this refuses.
+ */
+function assertCreateMutationMatchesInput(plan: CreateIssueWritePlan): void {
+  const { schemaRequirements: schema } = plan;
+  // One entry per requested value, so a component list resolves item by item -
+  // matching on fieldId alone would give every component the first one's answer.
+  const resolvedFor = (fieldId: string, requested: string): string | undefined =>
+    schema.resolvedValues.find((entry) => entry.fieldId === fieldId && entry.requested === requested)
+      ?.resolved;
+
+  let derived: unknown;
+  try {
+    const input = validateCreateInput(plan.input);
+    const priority =
+      input.priority !== undefined
+        ? resolvedFor(CREATE_FIELD_IDS.priority, input.priority)
+        : undefined;
+    derived = toJiraCreateFields(plan.projectKey, schema.issueTypeId, input, {
+      ...(priority !== undefined ? { priority } : {}),
+      ...(input.components !== undefined
+        ? {
+            components: input.components.map(
+              (name) => resolvedFor(CREATE_FIELD_IDS.components, name) ?? name,
+            ),
+          }
+        : {}),
+    });
+  } catch (err) {
+    throw new JamError(
+      "JAM_WRITE_PLAN_TAMPERED",
+      `This create plan does not describe an issue JAM would create in ${plan.projectKey}. Nothing was created - call jira_write_plan again.`,
+      { planId: plan.planId, project: plan.projectKey, reason: toJamError(err).code },
+    );
+  }
+
+  const recorded = plan.mutation.kind === "create" ? plan.mutation.fields : undefined;
+  if (JSON.stringify(derived) !== JSON.stringify(recorded)) {
+    throw new JamError(
+      "JAM_WRITE_PLAN_TAMPERED",
+      `This create plan's recorded fields do not match what its input produces. Nothing was created - call jira_write_plan again.`,
+      { planId: plan.planId, project: plan.projectKey },
+    );
+  }
+}
+
 async function revalidateSchema(deps: JamDeps, plan: CreateIssueWritePlan): Promise<void> {
   const { projectKey, schemaRequirements } = plan;
   const issueTypes = await deps.jiraCreateMetadata.getIssueTypes(projectKey);

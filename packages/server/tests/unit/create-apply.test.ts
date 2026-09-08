@@ -9,8 +9,7 @@ import {
   FakeJiraWrite,
   issue,
   testConfig,
-  testDeps,
-} from "../helpers.js";
+  testDeps, testWritePlanStore } from "../helpers.js";
 
 /**
  * Applying a create.
@@ -33,7 +32,7 @@ function setup(options: { now?: () => Date; created?: ReturnType<typeof issue> }
     jira,
     testConfig({ project: { key: "PROJECT" } }),
     write,
-    new WritePlanStore(options.now ?? (() => new Date())),
+    testWritePlanStore(options.now ?? (() => new Date())),
     metadata,
   );
   return { jam, metadata, write, jira };

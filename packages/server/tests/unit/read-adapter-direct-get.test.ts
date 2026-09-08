@@ -10,8 +10,7 @@ import {
   FakeJiraWrite,
   issue,
   testConfig,
-  testDeps,
-} from "../helpers.js";
+  testDeps, testWritePlanStore } from "../helpers.js";
 
 /**
  * ConsistencyPolicy calls for a direct issue GET around a write.
@@ -80,7 +79,7 @@ describe("the write plane's reads", () => {
       jira,
       testConfig({ project: { key: "PROJECT" } }),
       write,
-      new WritePlanStore(),
+      testWritePlanStore(),
       metadata,
     );
 

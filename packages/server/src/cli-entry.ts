@@ -15,6 +15,7 @@ import {
   setupPlanCommand,
 } from "./cli/agent-api.js";
 import { runJiraRead } from "./cli/jira-read.js";
+import { runJiraWrite } from "./cli/jira-write.js";
 
 /**
  * Command dispatch for the JAM CLI, separated from the bin so other entry
@@ -42,6 +43,11 @@ Jira
   jam jira full <KEY> [KEY...]
                           Read Jira from the shell - the same reads the MCP
                           tools do, for a session that cannot see them yet
+  jam jira write-plan --operation <op> [--key KEY] --input '<json>'
+  jam jira write-apply <planId>
+                          Write the same way the tools do: plan first, then
+                          apply that plan by id. Nothing is written until
+                          write-apply, and it takes no payload of its own
 
 Authentication
   jam auth status [--json]  Whether Jira credentials are configured (never their value)
@@ -168,9 +174,12 @@ export async function runJamCommand(argv: string[]): Promise<number> {
     }
 
     case "jira":
-      // Reads addressed to the shell, for a session that cannot see the MCP
-      // tools yet. Same application path as the tools - see cli/jira-read.ts.
-      return runJiraRead(rest);
+      // Jira addressed to the shell, for a session that cannot see the MCP
+      // tools. Same application path as the tools, reads and writes alike -
+      // see cli/jira-read.ts and cli/jira-write.ts.
+      return rest[0] === "write-plan" || rest[0] === "write-apply"
+        ? runJiraWrite(rest)
+        : runJiraRead(rest);
 
     case "help":
     case "--help":

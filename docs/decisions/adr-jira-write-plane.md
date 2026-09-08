@@ -122,32 +122,51 @@ dropped connection, or a create Jira accepted without naming — is reported as
 
 ## Where plans live
 
-**In the server process, in memory, for ten minutes.**
+**In a file under `~/.jam/write-plans/`, for ten minutes, shared by both
+transports.**
 
-The alternative was a signed self-contained token: the plan travels through the
-agent and comes back, verified by a signature. It loses on both counts that
-matter here.
+This was in memory, in the server process, and the reason it moved is the
+condition this section named for revisiting: plans had to outlive a process.
 
-The signing key has to come from somewhere. A key on disk is new secret
-material to protect, for a feature whose whole point is not handling secrets
-carelessly. A per-process key gives the token exactly the lifetime an in-memory
-map already has, with more code and a larger attack surface.
+`jam jira write-plan` and `jam jira write-apply` are two invocations. An
+in-memory plan is gone before apply can see it, so writing from the shell was
+impossible — and writing from the shell is what a session needs when its MCP
+registry came up in a failed state and the tools cannot be re-registered
+without restarting it. Sharing one store between MCP and the CLI also means a
+plan made through the tools can be applied from the shell after they stop
+answering, which is the case the whole change exists for.
 
-And the mutation itself would have to leave the process. Keeping it in memory
-makes forgery impossible rather than computationally hard: `planId` is an
-opaque handle, and what it names is never serialized anywhere an agent can
-reach. A plan is also single-use, so an applied receipt cannot be replayed into
-a second comment.
+A signed token was still not the shape. The signing key has the same problem it
+had before: a key on disk is new secret material to protect, and a per-process
+key gives a token the lifetime an in-memory map already had. JAM does hold an
+OS secret store, but its contract is the Jira credential triple, and widening
+it to carry a signing key is a larger change than the one being made.
 
-The cost is that plans do not survive a restart, and are not shared between
-concurrent JAM processes. Both are acceptable. A plan is only valid while the
-issue has not moved, so a plan old enough to be affected was going to be
-rejected on its own terms; and re-planning is one read.
+**What replaces the in-process guarantee is re-derivation, not a signature.**
+Apply reads the plan's own recorded input, derives the mutation from it again,
+and refuses (`JAM_WRITE_PLAN_TAMPERED`) if the stored mutation is not what that
+input produces. Editing the file to smuggle a different write means editing the
+input to match — which is asking JAM to plan that write, which is what
+`jira_write_plan` is. There is nothing to gain by forging a plan that could be
+obtained by requesting one.
 
-If plans ever need to outlive a process — a remote JAM, or a queued approval
-step — this is the decision to revisit, and a signed token becomes the obvious
-shape. Nothing in the tool contract changes if it does: an agent already treats
-`planId` as opaque.
+Re-derivation reads the plan's recorded resolutions rather than asking Jira
+again. Planning called Jira for a transition list and a user directory and
+wrote down what it settled on; re-running those would cost a round trip and
+would re-raise refusals that belong to planning ("already assigned", "not
+assignable"), reporting a fact about the current state as though the plan were
+malformed. What is checked is narrower and sufficient: the mutation must be the
+one this plan's own parts describe.
+
+Single use is now enforced by the filesystem. `take` claims a plan by renaming
+it, so two concurrent applies cannot both hold one — for `comment.add` the
+alternative is two comments.
+
+The cost is that a mutation is now serialized where the machine's user can read
+and edit it. That is a real reduction from "forgery is impossible" to "forgery
+gains nothing", and it is the price of a write path that survives its
+transport. Plans are still short-lived, still single-use, and still only valid
+while the issue has not moved.
 
 ## Consequences
 

@@ -8,8 +8,7 @@ import {
   FakeJiraWrite,
   testConfig,
   testDeps,
-  issue,
-} from "../helpers.js";
+  issue, testWritePlanStore } from "../helpers.js";
 
 /**
  * Planning a create.
@@ -25,7 +24,7 @@ function deps(metadata = new FakeCreateMetadata(), write = new FakeJiraWrite()) 
       new FakeJira({ issues: [issue({ key: "PROJECT-1" })] }),
       testConfig({ project: { key: "PROJECT" } }),
       write,
-      new WritePlanStore(),
+      testWritePlanStore(),
       metadata,
     ),
     metadata,

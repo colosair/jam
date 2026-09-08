@@ -98,6 +98,7 @@ export async function planWrite(
     ...(transition ? { transition } : {}),
     ...(baseAssigneeAccountId ? { baseAssigneeAccountId } : {}),
     mutation,
+    input: input as Record<string, unknown>,
   }) as ExistingIssueWritePlan;
 
   return {
@@ -221,7 +222,10 @@ function requireIssueKey(request: PlanWriteRequest): string {
  * is writable and whether the input is even the right shape are all knowable
  * without asking Jira anything, so they are answered first.
  */
-function validateInput(operation: ExistingIssueOperation, raw: Record<string, unknown>): WriteInput {
+export function validateInput(
+  operation: ExistingIssueOperation,
+  raw: Record<string, unknown>,
+): WriteInput {
   switch (operation) {
     case "comment.add": {
       const text = (raw as CommentAddInput).text;
@@ -390,7 +394,8 @@ function currentValue(issue: FullIssueContext, field: string): unknown {
 }
 
 /** Whitelisted values to the shapes Jira's field API expects. */
-function toJiraFields(input: FieldUpdateInput): Record<string, unknown> {
+/** Exported so apply can derive the same fields again and compare. */
+export function toJiraFields(input: FieldUpdateInput): Record<string, unknown> {
   const fields: Record<string, unknown> = {};
   if (input.summary !== undefined) fields["summary"] = input.summary;
   if (input.priority !== undefined) fields["priority"] = { name: input.priority };
