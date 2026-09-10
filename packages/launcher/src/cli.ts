@@ -55,6 +55,14 @@ export async function run(argv: string[]): Promise<number> {
 }
 
 function runRuntime(argv: string[]): number {
+  // The launcher answers `runtime` itself, so the dispatcher's help guard never
+  // sees it. `runtime use --help` would otherwise fall through to the branches
+  // below and rewrite ~/.jam/config.yaml while the person was reading.
+  if (argv.some((arg) => arg === "--help" || arg === "-h")) {
+    process.stderr.write(usage(invokedAs()));
+    return 0;
+  }
+
   const json = argv.includes("--json");
   const positional = argv.filter((a) => a !== "--json");
 
