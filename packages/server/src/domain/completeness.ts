@@ -1,8 +1,26 @@
 export type ContextLevel = "search" | "context" | "full";
 
 export type IncompleteReason =
+  /**
+   * The caller asked for a preview and got one. Nothing failed and nothing was
+   * dropped - the first page is what preview means, and `scope: "complete"` is
+   * the whole answer. Previously this was reported as PARTIAL_API_RESPONSE,
+   * which reads as "Jira gave us less than we asked for" and is a different
+   * situation entirely.
+   */
+  | "PREVIEW_LIMIT"
+  /**
+   * A complete enumeration stopped at JAM's page cap. The cap exists so an
+   * unbounded query cannot walk forever; reaching it means the query is wider
+   * than the cap, not that the payload was too large. Previously reported as
+   * OUTPUT_BUDGET, which is about the size of what is returned rather than how
+   * far the read walked.
+   */
+  | "PAGINATION_LIMIT"
+  /** Payload dropped to stay inside a token budget. Retrieval itself finished. */
   | "OUTPUT_BUDGET"
   | "PERMISSION"
+  /** Jira returned less than was asked for - missing keys, partial threads. */
   | "PARTIAL_API_RESPONSE"
   | "UNKNOWN";
 
@@ -50,6 +68,19 @@ export type CompletenessMeta = {
   fetchedAt: string;
 
   pagesFetched?: number;
+  /**
+   * Whether Jira has more beyond what came back.
+   *
+   * `complete: false` says the read did not finish; this says whether anything
+   * is left to read. They differ for a preview, which is deliberately partial
+   * with more available, and for a dropped payload, which is complete with
+   * nothing left. The continuation token itself stays inside JAM - handing it
+   * out would move pagination to the caller, which is the one thing this
+   * boundary exists to prevent.
+   */
+  moreAvailable?: boolean;
+  /** How many records this result actually carries. */
+  returnedCount?: number;
   fieldsLoaded?: string[];
 
   commentsComplete?: boolean;

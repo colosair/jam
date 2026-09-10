@@ -101,8 +101,29 @@ async function withPrompts(run: () => Promise<number>): Promise<number> {
   }
 }
 
+/** `--help` anywhere in the arguments, not only as the command. */
+function wantsHelp(argv: string[]): boolean {
+  return argv.some((arg) => arg === "--help" || arg === "-h");
+}
+
 export async function runJamCommand(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
+
+  // Asking a command what it does must not be the same as running it.
+  //
+  // `--help` was only recognised as the command itself, so `jam setup --help`
+  // reached the setup wizard and configured the machine. Measured: it moved a
+  // registration from one version to another while the person was reading. The
+  // same shape held for update, refresh, uninstall, runtime use, auth login and
+  // the write commands - every mutating path in this dispatcher.
+  //
+  // One guard here rather than a flag per command: the property to hold is
+  // about the dispatcher, and a per-command check is a list that will be
+  // incomplete the first time somebody adds a command.
+  if (command !== undefined && wantsHelp(rest)) {
+    process.stdout.write(USAGE);
+    return 0;
+  }
 
   switch (command ?? "serve") {
     case "serve":

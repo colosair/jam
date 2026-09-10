@@ -66,11 +66,18 @@ export async function searchIssues(
     complete: !morePagesAvailable,
     fetchedAt: nowIso(),
     pagesFetched,
+    returnedCount: issues.length,
+    moreAvailable: morePagesAvailable,
     fieldsLoaded: fields,
   };
 
   if (morePagesAvailable) {
-    meta.reason = truncatedByPageCap ? "OUTPUT_BUDGET" : "PARTIAL_API_RESPONSE";
+    // Three different situations used to collapse into two wrong codes. A
+    // preview stopping is the caller getting what they asked for; a complete
+    // enumeration hitting the cap is a query wider than the cap; neither is
+    // Jira answering with less than it was asked for, and neither is a payload
+    // trimmed to fit a budget.
+    meta.reason = truncatedByPageCap ? "PAGINATION_LIMIT" : "PREVIEW_LIMIT";
     meta.overflow = ["pages"];
     meta.notes = [
       scope === "preview"
@@ -79,6 +86,9 @@ export async function searchIssues(
     ];
   }
 
+  // Output size is a separate axis from retrieval. A result can be complete and
+  // still be larger than the caller wants to read, and saying so must not turn
+  // `complete` false - that would report a finished read as an unfinished one.
   const budget = deps.config.output.searchTokens;
   const estimated = estimateTokens(issues);
   if (estimated > budget) {

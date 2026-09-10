@@ -98,3 +98,43 @@ describe("launcher-handled runtime group", () => {
     expect(written).not.toMatch(/token|password|secret|JIRA_API/i);
   });
 });
+
+/**
+ * The dispatcher's help guard cannot cover this group, because the launcher
+ * answers it before dispatching. Asking `runtime use` what it does used to fall
+ * through to the branches that write ~/.jam/config.yaml.
+ */
+describe("asking the runtime group for help changes nothing", () => {
+  let home: string;
+  let stderr: string[];
+
+  beforeEach(() => {
+    home = sandboxHome();
+    stderr = [];
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk: unknown) => {
+      stderr.push(String(chunk));
+      return true;
+    });
+    return () => vi.restoreAllMocks();
+  });
+
+  for (const argv of [
+    ["runtime", "--help"],
+    ["runtime", "use", "--help"],
+    ["runtime", "use", "package", "--help"],
+    ["runtime", "use", "development", "/tmp/checkout", "-h"],
+  ]) {
+    it(argv.join(" "), async () => {
+      expect(await run(argv)).toBe(0);
+      expect(stderr.join("")).toContain("runtime use package");
+      expect(readRuntimeConfig(), "help wrote a runtime selection").toBeUndefined();
+      expect(() => readFileSync(join(home, ".jam", "config.yaml"), "utf8")).toThrow();
+    });
+  }
+
+  it("without a help flag the command still records the selection", async () => {
+    expect(await run(["runtime", "use", "package"])).toBe(0);
+    expect(readRuntimeConfig()).toBeDefined();
+  });
+});

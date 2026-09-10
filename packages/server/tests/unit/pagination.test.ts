@@ -49,7 +49,10 @@ describe("search pagination", () => {
 
     expect(jira.searchCalls).toHaveLength(2);
     expect(result.meta.complete).toBe(false);
-    expect(result.meta.reason).toBe("OUTPUT_BUDGET");
+    // Not OUTPUT_BUDGET: nothing was dropped to fit a size. The walk stopped at
+    // the cap, which is a different fact and a different thing to do about it.
+    expect(result.meta.reason).toBe("PAGINATION_LIMIT");
+    expect(result.meta.moreAvailable).toBe(true);
     expect(result.meta.notes?.[0]).toMatch(/safety cap/);
   });
 
